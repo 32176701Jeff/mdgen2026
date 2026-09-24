@@ -215,7 +215,7 @@ class LatentMDGenModel(nn.Module):
     def forward(self, x, t, mask,
                 start_frames=None, end_frames=None,
                 x_cond=None, x_cond_mask=None,
-                aatype=None
+                aatype=None, position_ids=None
                 ):
         if self.args.dynamic_mpnn:
             x = x[:, [0, -1]]
@@ -266,10 +266,13 @@ class LatentMDGenModel(nn.Module):
     def forward_inference(self, x, t, mask,
                           start_frames=None, end_frames=None,
                           x_cond=None, x_cond_mask=None,
-                          aatype=None
+                          aatype=None, position_ids=None
                           ):
         if not self.args.design or self.args.dynamic_mpnn or self.args.mpnn:
-            return self.forward(x, t, mask, start_frames, end_frames, x_cond, x_cond_mask, aatype)
+            return self.forward(
+                x, t, mask, start_frames, end_frames, x_cond, x_cond_mask,
+                aatype, position_ids
+            )
         else:
             x_discrete = x[:, :, :, -20:]
             B, T, L, _ = x_discrete.shape
@@ -283,7 +286,10 @@ class LatentMDGenModel(nn.Module):
                     f'them onto the simplex.')
 
                 # x_discrete = simplex_proj(x_discrete)
-            latent = self.forward(x, t, mask, start_frames, end_frames, x_cond, x_cond_mask, aatype)
+            latent = self.forward(
+                x, t, mask, start_frames, end_frames, x_cond, x_cond_mask,
+                aatype, position_ids
+            )
             latent_continuous = latent[:, :, :, :-20]
             logits = latent[:, :, :, -20:]
 

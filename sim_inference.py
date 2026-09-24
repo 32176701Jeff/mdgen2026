@@ -1,4 +1,5 @@
 import argparse
+import json
 parser = argparse.ArgumentParser()
 parser.add_argument('--sim_ckpt', type=str, default=None, required=True)
 parser.add_argument('--data_dir', type=str, default=None, required=True)
@@ -134,11 +135,23 @@ def write_sdpa_backend_report(model, profiler):
 
 
 
-def get_batch(name, seqres, num_frames):
+def get_batch(name, seqres, position_ids, num_frames):
     arr = np.lib.format.open_memmap(f'{args.data_dir}/{name}{args.suffix}.npy', 'r')
 
     if not args.tps: # else keep all frames
         arr = np.copy(arr[0:1]).astype(np.float32)
+
+    position_ids = torch.as_tensor(position_ids, dtype=torch.long)
+    if position_ids.ndim != 1 or len(position_ids) != len(seqres):
+        raise ValueError(
+            f'{name}: seqres length {len(seqres)} does not match '
+            f'position_ids shape {tuple(position_ids.shape)}'
+        )
+    if arr.shape[1] != len(seqres):
+        raise ValueError(
+            f'{name}: NPY residue count {arr.shape[1]} does not match '
+            f'CSV seqres/position_ids length {len(seqres)}'
+        )
 
     frames = atom14_to_frames(torch.from_numpy(arr))
     seqres = torch.tensor([restype_order[c] for c in seqres])
@@ -150,6 +163,7 @@ def get_batch(name, seqres, num_frames):
         return {
             'atom37': atom37,
             'seqres': seqres,
+            'position_ids': position_ids,
             'mask': restype_atom37_mask[seqres],
         }
         
@@ -160,6 +174,7 @@ def get_batch(name, seqres, num_frames):
         'trans': frames._trans,
         'rots': frames._rots._rot_mats,
         'seqres': seqres,
+        'position_ids': position_ids,
         'mask': mask, # (L,)
     }
 
@@ -171,6 +186,7 @@ def rollout(model, batch):
         expanded_batch = {
             'atom37': batch['atom37'].expand(-1, args.num_frames, -1, -1, -1),
             'seqres': batch['seqres'],
+            'position_ids': batch['position_ids'],
             'mask': batch['mask'],
         }
     else:    
@@ -180,6 +196,7 @@ def rollout(model, batch):
             'trans': batch['trans'].expand(-1, args.num_frames, -1, -1),
             'rots': batch['rots'].expand(-1, args.num_frames, -1, -1, -1),
             'seqres': batch['seqres'],
+            'position_ids': batch['position_ids'],
             'mask': batch['mask'],
         }
     should_profile = (
@@ -216,9 +233,11 @@ def rollout(model, batch):
     return atom14, new_batch
     
     
-def do(model, name, seqres):
+def do(model, name, seqres, position_ids):
 
-    item = get_batch(name, seqres, num_frames = model.args.num_frames)
+    item = get_batch(
+        name, seqres, position_ids, num_frames=model.args.num_frames
+    )
     batch = next(iter(torch.utils.data.DataLoader([item])))
 
     batch = tensor_tree_map(lambda x: x.cuda(), batch)  
@@ -256,7 +275,12 @@ def main():
     for name in df.index:
         if args.pdb_id and name not in args.pdb_id:
             continue
-        do(model, name, df.seqres[name])
+        seqres = df.seqres[name]
+        if 'position_ids' in df.columns:
+            position_ids = json.loads(df.position_ids[name])
+        else:
+            position_ids = list(range(len(seqres)))
+        do(model, name, seqres, position_ids)
         
 
 main()

@@ -1,3 +1,4 @@
+import json
 import torch
 from .rigid_utils import Rigid
 from .residue_constants import restype_order
@@ -24,9 +25,20 @@ class MDGenDataset(torch.utils.data.Dataset):
         if self.args.overfit_peptide is None:
             name = self.df.index[idx]
             seqres = self.df.seqres[name]
+            if 'position_ids' in self.df.columns:
+                position_ids = np.asarray(json.loads(self.df.position_ids[name]), dtype=np.int64)
+            else:
+                position_ids = np.arange(len(seqres), dtype=np.int64)
         else:
             name = self.args.overfit_peptide
             seqres = name
+            position_ids = np.arange(len(seqres), dtype=np.int64)
+
+        if position_ids.ndim != 1 or len(position_ids) != len(seqres):
+            raise ValueError(
+                f'{name}: seqres length {len(seqres)} does not match '
+                f'position_ids shape {position_ids.shape}'
+            )
 
         if self.args.atlas:
             i = np.random.randint(1, 4)
@@ -61,6 +73,7 @@ class MDGenDataset(torch.utils.data.Dataset):
                 'frame_start': frame_start,
                 'atom37': atom37,
                 'seqres': seqres,
+                'position_ids': position_ids,
                 'mask': restype_atom37_mask[seqres], # (L,)
             }
         torsions, torsion_mask = atom37_to_torsions(atom37, aatype)
@@ -73,6 +86,7 @@ class MDGenDataset(torch.utils.data.Dataset):
                 torsions = torsions[:,start:start+self.args.crop]
                 frames = frames[:,start:start+self.args.crop]
                 seqres = seqres[start:start+self.args.crop]
+                position_ids = position_ids[start:start+self.args.crop]
                 mask = mask[start:start+self.args.crop]
                 torsion_mask = torsion_mask[start:start+self.args.crop]
                 
@@ -85,6 +99,7 @@ class MDGenDataset(torch.utils.data.Dataset):
                 ], 1)
                 mask = np.concatenate([mask, np.zeros(pad, dtype=np.float32)])
                 seqres = np.concatenate([seqres, np.zeros(pad, dtype=int)])
+                position_ids = np.concatenate([position_ids, np.zeros(pad, dtype=np.int64)])
                 torsions = torch.cat([torsions, torch.zeros((torsions.shape[0], pad, 7, 2), dtype=torch.float32)], 1)
                 torsion_mask = torch.cat([torsion_mask, torch.zeros((pad, 7), dtype=torch.float32)])
 
@@ -96,6 +111,7 @@ class MDGenDataset(torch.utils.data.Dataset):
             'trans': frames._trans,
             'rots': frames._rots._rot_mats,
             'seqres': seqres,
+            'position_ids': position_ids,
             'mask': mask, # (L,)
         }
 
