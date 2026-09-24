@@ -9,6 +9,8 @@ def parse_train_args():
     parser.add_argument("--ckpt", type=str, default=None)
     parser.add_argument("--validate", action='store_true', default=False)
     parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--train_seed", type=int, default=137)  #modify-trainseed
+    parser.add_argument("--model_dir",type=str,default=None,help="Directory used as MODEL_DIR",)
     
     ## Epoch settings
     group = parser.add_argument_group("Epoch settings")
@@ -78,6 +80,15 @@ def parse_train_args():
     group = parser.add_argument_group("Model settings")
     group.add_argument('--hyena', action='store_true')
     group.add_argument('--no_rope', action='store_true')
+    group.add_argument('--use_sdpa', action='store_true')
+    group.add_argument(
+        '--print_sdpa_backend',
+        '--print_sdpa_backened',
+        dest='print_sdpa_backend',
+        type=str,
+        default=None,
+        metavar='PATH',
+    )
     group.add_argument('--dropout', type=float, default=0.0)
     group.add_argument('--scale_factor', type=float, default=1.0)
     group.add_argument('--interleave_ipa', action='store_true')
@@ -120,8 +131,9 @@ def parse_train_args():
     group.add_argument('--cond_interval', type=int, default=None) # for superresolution
     
     args = parser.parse_args()
-    os.environ["MODEL_DIR"] = os.path.join("workdir", args.run_name)
+    if args.model_dir is not None:
+        os.environ["MODEL_DIR"] = os.path.join(args.model_dir, args.run_name)
+    else:
+        os.environ["MODEL_DIR"] = os.path.join("workdir", args.run_name)
     
     return args
-
-

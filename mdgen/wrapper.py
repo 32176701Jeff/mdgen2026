@@ -47,7 +47,8 @@ class Wrapper(pl.LightningModule):
 
     def __init__(self, args):
         super().__init__()
-        self.save_hyperparameters()
+        # Persist only model args; runtime backend switches stay out of checkpoints.
+        self.save_hyperparameters("args")
         self.args = args
         self._log = defaultdict(list)
         self.last_log_time = time.time()
@@ -173,8 +174,9 @@ class Wrapper(pl.LightningModule):
 
 
 class NewMDGenWrapper(Wrapper):
-    def __init__(self, args):
+    def __init__(self, args, use_sdpa=False):
         super().__init__(args)
+        self.use_sdpa = use_sdpa
         for key in [
             'inpainting',
             'no_torsion',
@@ -200,7 +202,11 @@ class NewMDGenWrapper(Wrapper):
             latent_dim = 111
         
         self.latent_dim = latent_dim
-        self.model = LatentMDGenModel(args, latent_dim)
+        self.model = LatentMDGenModel(
+            args,
+            latent_dim,
+            use_sdpa=use_sdpa,
+        )
 
         self.transport = create_transport(
             args,

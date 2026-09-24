@@ -25,22 +25,10 @@ if deepspeed_is_installed:
 if ds4s_is_installed:
     from deepspeed.ops.deepspeed4science import DS4Sci_EvoformerAttention
 
-# FlashAttention is optional in the baseline. Newer FlashAttention versions do
-# not expose the legacy flash_attn_unpadded_kvpacked_func API, so the missing
-# symbol must not prevent the baseline model from importing.
-fa_is_installed = False
-fa_legacy_import_error = None
-if importlib.util.find_spec("flash_attn") is not None:
-    try:
-        from flash_attn.bert_padding import unpad_input
-        from flash_attn.flash_attn_interface import (
-            flash_attn_unpadded_kvpacked_func,
-        )
-        fa_is_installed = True
-    except (ImportError, OSError) as exc:
-        unpad_input = None
-        flash_attn_unpadded_kvpacked_func = None
-        fa_legacy_import_error = repr(exc)
+fa_is_installed = importlib.util.find_spec("flash_attn") is not None
+if fa_is_installed:
+    from flash_attn.bert_padding import unpad_input
+    from flash_attn.flash_attn_interface import flash_attn_unpadded_kvpacked_func
 
 import torch
 import torch.nn as nn
@@ -780,8 +768,7 @@ def _lma(
 def _flash_attn(q, k, v, kv_mask):
     if not fa_is_installed:
         raise ValueError(
-            "_flash_attn requires the legacy FlashAttention API: "
-            f"{fa_legacy_import_error or 'flash_attn is not installed'}"
+            "_flash_attn requires that FlashAttention be installed"
         )
    
     batch_dims = q.shape[:-3]

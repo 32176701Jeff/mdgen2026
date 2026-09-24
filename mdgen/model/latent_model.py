@@ -41,9 +41,10 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
 
 class LatentMDGenModel(nn.Module):
-    def __init__(self, args, latent_dim):
+    def __init__(self, args, latent_dim, use_sdpa=False):
         super().__init__()
         self.args = args
+        self.use_sdpa = use_sdpa
         if self.args.design:
             assert self.args.prepend_ipa
 
@@ -80,6 +81,7 @@ class LatentMDGenModel(nn.Module):
                         mha_heads=args.mha_heads,
                         dropout=args.dropout,
                         use_rotary_embeddings=not args.no_rope,
+                        use_sdpa=use_sdpa,
                         ipa_args=ipa_args
                     )
                     for _ in range(args.num_layers)
@@ -97,6 +99,7 @@ class LatentMDGenModel(nn.Module):
                     num_frames=args.num_frames,
                     use_rotary_embeddings=not args.no_rope,
                     use_time_attention=True,
+                    use_sdpa=use_sdpa,
                     ipa_args=ipa_args if args.interleave_ipa else None,
                 )
                 for _ in range(args.num_layers)
@@ -324,7 +327,13 @@ class AttentionWithRoPE(nn.Module):
 
     def forward(self, x, mask):
         x = x.transpose(0, 1)
-        x, _ = self.attn(query=x, key=x, value=x, key_padding_mask=1 - mask)
+        x, _ = self.attn(
+            query=x,
+            key=x,
+            value=x,
+            key_padding_mask=1 - mask,
+            need_weights=False,
+        )
         x = x.transpose(0, 1)
         return x
 
@@ -333,16 +342,24 @@ class IPALayer(nn.Module):
     """Transformer layer block."""
 
     def __init__(self, embed_dim, ffn_embed_dim, mha_heads, dropout=0.0,
-                 use_rotary_embeddings=False, ipa_args=None):
+                 use_rotary_embeddings=False, use_sdpa=False, ipa_args=None):
         super().__init__()
         self.embed_dim = embed_dim
         self.ffn_embed_dim = ffn_embed_dim
         self.mha_heads = mha_heads
         self.inf = 1e5
         self.use_rotary_embeddings = use_rotary_embeddings
-        self._init_submodules(add_bias_kv=True, dropout=dropout, ipa_args=ipa_args)
+        self.use_sdpa = use_sdpa
+        self._init_submodules(
+            add_bias_kv=True,
+            dropout=dropout,
+            use_sdpa=use_sdpa,
+            ipa_args=ipa_args,
+        )
 
-    def _init_submodules(self, add_bias_kv=False, dropout=0.0, ipa_args=None):
+    def _init_submodules(
+        self, add_bias_kv=False, dropout=0.0, use_sdpa=False, ipa_args=None
+    ):
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
             nn.Linear(self.embed_dim, 6 * self.embed_dim, bias=True)
@@ -357,6 +374,7 @@ class IPALayer(nn.Module):
             add_bias_kv=add_bias_kv,
             dropout=dropout,
             use_rotary_embeddings=self.use_rotary_embeddings,
+            use_sdpa=use_sdpa,
         )
 
         self.mha_layer_norm = nn.LayerNorm(self.embed_dim, elementwise_affine=False, eps=1e-6)
@@ -388,7 +406,8 @@ class LatentMDGenLayer(nn.Module):
     """Transformer layer block."""
 
     def __init__(self, embed_dim, ffn_embed_dim, mha_heads, dropout=0.0, num_frames=50, hyena=False,
-                 use_rotary_embeddings=False, use_time_attention=True, ipa_args=None):
+                 use_rotary_embeddings=False, use_time_attention=True,
+                 use_sdpa=False, ipa_args=None):
         super().__init__()
         self.embed_dim = embed_dim
         self.num_frames = num_frames
@@ -398,9 +417,17 @@ class LatentMDGenLayer(nn.Module):
         self.inf = 1e5
         self.use_time_attention = use_time_attention
         self.use_rotary_embeddings = use_rotary_embeddings
-        self._init_submodules(add_bias_kv=True, dropout=dropout, ipa_args=ipa_args)
+        self.use_sdpa = use_sdpa
+        self._init_submodules(
+            add_bias_kv=True,
+            dropout=dropout,
+            use_sdpa=use_sdpa,
+            ipa_args=ipa_args,
+        )
 
-    def _init_submodules(self, add_bias_kv=False, dropout=0.0, ipa_args=None):
+    def _init_submodules(
+        self, add_bias_kv=False, dropout=0.0, use_sdpa=False, ipa_args=None
+    ):
 
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
@@ -426,6 +453,7 @@ class LatentMDGenLayer(nn.Module):
                 add_bias_kv=add_bias_kv,
                 dropout=dropout,
                 use_rotary_embeddings=self.use_rotary_embeddings,
+                use_sdpa=use_sdpa,
             )
 
         self.mha_l = AttentionWithRoPE(
@@ -434,6 +462,7 @@ class LatentMDGenLayer(nn.Module):
             add_bias_kv=add_bias_kv,
             dropout=dropout,
             use_rotary_embeddings=self.use_rotary_embeddings,
+            use_sdpa=use_sdpa,
         )
 
         self.mha_layer_norm = nn.LayerNorm(self.embed_dim, elementwise_affine=False, eps=1e-6)

@@ -11,10 +11,14 @@ parser.add_argument('--tps', action='store_true')
 parser.add_argument('--xtc', action='store_true')
 parser.add_argument('--out_dir', type=str, default=".")
 parser.add_argument('--split', type=str, default='splits/4AA_test.csv')
+parser.add_argument('--inference_seed', type=int, default=137)  #modify-inferenceseed
+parser.add_argument('--use_sdpa', action='store_true')
+parser.add_argument('--print_sdpa_backend', type=str, default=None, metavar='PATH')
 args = parser.parse_args()
 
 import os, torch, mdtraj, tqdm, time
 import numpy as np
+from pytorch_lightning import seed_everything  #modify-inferenceseed
 from mdgen.geometry import atom14_to_frames, atom14_to_atom37, atom37_to_torsions
 from mdgen.residue_constants import restype_order, restype_atom37_mask
 from mdgen.tensor_utils import tensor_tree_map
@@ -22,10 +26,111 @@ from mdgen.wrapper import NewMDGenWrapper
 from mdgen.utils import atom14_to_pdb
 import pandas as pd
 
-
+seed_everything(args.inference_seed, workers=True)  #modify-inferenceseed
 
 
 os.makedirs(args.out_dir, exist_ok=True)
+
+
+# Map the dispatched ATen operator to the SDPA backend selected by PyTorch.
+def get_sdpa_backend(operator_name):
+    backend_operators = {
+        '_scaled_dot_product_flash_attention': 'FLASH_ATTENTION',
+        '_scaled_dot_product_efficient_attention': 'EFFICIENT_ATTENTION',
+        '_scaled_dot_product_cudnn_attention': 'CUDNN_ATTENTION',
+        '_scaled_dot_product_attention_math': 'MATH',
+    }
+    for operator, backend in backend_operators.items():
+        if operator in operator_name:
+            return backend
+    return None
+
+
+# Write module-level routing and the actual PyTorch SDPA operators from the first forward.
+def write_sdpa_backend_report(model, profiler):
+    output_path = os.path.abspath(args.print_sdpa_backend)
+    output_dir = os.path.dirname(output_path)
+    os.makedirs(output_dir, exist_ok=True)
+
+    lines = [
+        'SDPA backend report',
+        f'requested_attention_path: {"sdpa" if args.use_sdpa else "manual"}',
+        f'torch_version: {torch.__version__}',
+        f'cuda_wheel: {torch.version.cuda}',
+        f'gpu: {torch.cuda.get_device_name(0)}',
+        '',
+        'Enabled PyTorch SDPA backends:',
+    ]
+    enabled_checks = (
+        ('FLASH_ATTENTION', 'flash_sdp_enabled'),
+        ('EFFICIENT_ATTENTION', 'mem_efficient_sdp_enabled'),
+        ('CUDNN_ATTENTION', 'cudnn_sdp_enabled'),
+        ('MATH', 'math_sdp_enabled'),
+    )
+    for backend, check_name in enabled_checks:
+        check = getattr(torch.backends.cuda, check_name, None)
+        lines.append(f'{backend}: {check() if check is not None else "unknown"}')
+
+    lines.extend(['', 'MDGen attention modules:'])
+    found_module = False
+    for name, module in model.named_modules():
+        if not hasattr(module, 'last_attention_backend'):
+            continue
+        found_module = True
+        backend = module.last_attention_backend or 'not_executed'
+        fallback = module.last_sdpa_fallback_reason
+        message = f'{name}: path={backend}'
+        if fallback is not None:
+            message += f', fallback={fallback}'
+        lines.append(message)
+    if not found_module:
+        lines.append('No attention modules expose backend information.')
+
+    lines.extend(['', 'PyTorch SDPA operators observed:'])
+    observed_backends = set()
+    observed_operators = []
+    events = profiler.key_averages(group_by_input_shape=True)
+    for event in events:
+        if 'scaled_dot_product' not in event.key:
+            continue
+        backend = get_sdpa_backend(event.key)
+        if backend is not None:
+            observed_backends.add(backend)
+        observed_operators.append((event, backend))
+
+    if observed_backends:
+        lines.append(f'selected_backends: {", ".join(sorted(observed_backends))}')
+    else:
+        lines.append('selected_backends: none detected')
+
+    if not observed_operators:
+        lines.append('No scaled-dot-product attention operators were observed.')
+    for event, backend in observed_operators:
+        self_device_time = getattr(
+            event,
+            'self_device_time_total',
+            getattr(event, 'self_cuda_time_total', 0.0),
+        )
+        device_time = getattr(
+            event,
+            'device_time_total',
+            getattr(event, 'cuda_time_total', 0.0),
+        )
+        lines.extend([
+            f'operator: {event.key}',
+            f'  backend: {backend or "dispatcher/unknown"}',
+            f'  calls: {event.count}',
+            f'  input_shapes: {event.input_shapes}',
+            f'  self_cpu_time_total_us: {event.self_cpu_time_total}',
+            f'  cpu_time_total_us: {event.cpu_time_total}',
+            f'  self_device_time_total_us: {self_device_time}',
+            f'  device_time_total_us: {device_time}',
+        ])
+
+    with open(output_path, 'w', encoding='utf-8') as handle:
+        handle.write('\n'.join(lines) + '\n')
+    model._sdpa_backend_reported = True
+    print(f'SDPA backend report saved to: {output_path}')
 
 
 
@@ -77,7 +182,20 @@ def rollout(model, batch):
             'seqres': batch['seqres'],
             'mask': batch['mask'],
         }
-    atom14, _ = model.inference(expanded_batch)
+    should_profile = (
+        args.print_sdpa_backend is not None
+        and not getattr(model, '_sdpa_backend_reported', False)
+    )
+    if should_profile:
+        activities = [
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA,
+        ]
+        with torch.profiler.profile(activities=activities, record_shapes=True) as profiler:
+            atom14, _ = model.inference(expanded_batch)
+        write_sdpa_backend_report(model, profiler)
+    else:
+        atom14, _ = model.inference(expanded_batch)
     new_batch = {**batch}
 
     if args.no_frames:
@@ -126,7 +244,11 @@ def do(model, name, seqres):
 
 @torch.no_grad()
 def main():
-    model = NewMDGenWrapper.load_from_checkpoint(args.sim_ckpt)
+    model = NewMDGenWrapper.load_from_checkpoint(
+        args.sim_ckpt,
+        use_sdpa=args.use_sdpa,
+        weights_only=False,
+    )
     model.eval().to('cuda')
     
     

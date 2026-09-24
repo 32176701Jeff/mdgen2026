@@ -85,6 +85,7 @@ class MultiheadAttention(nn.Module):
         self_attention: bool = False,
         encoder_decoder_attention: bool = False,
         use_rotary_embeddings: bool = False,
+        use_sdpa: bool = False,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -103,6 +104,10 @@ class MultiheadAttention(nn.Module):
 
         self.self_attention = self_attention
         self.encoder_decoder_attention = encoder_decoder_attention
+        # Runtime-only backend choice; plain attributes do not enter state_dict.
+        self.use_sdpa = use_sdpa
+        self.last_attention_backend = None
+        self.last_sdpa_fallback_reason = None
 
         assert not self.self_attention or self.qkv_same_dim, (
             "Self-attention requires query, key and " "value to be of the same size"
@@ -137,6 +142,47 @@ class MultiheadAttention(nn.Module):
 
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
+
+    def _sdpa_fallback_reason(
+        self,
+        query: Tensor,
+        key: Optional[Tensor],
+        value: Optional[Tensor],
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]],
+        need_weights: bool,
+        static_kv: bool,
+        attn_mask: Optional[Tensor],
+        before_softmax: bool,
+        need_head_weights: bool,
+    ) -> Optional[str]:
+        """Return why this call cannot use the MDGen SDPA path, if any."""
+        if not hasattr(F, "scaled_dot_product_attention"):
+            return "scaled_dot_product_attention is unavailable"
+        if query.numel() == 0:
+            return "query is empty"
+        if key is None or value is None:
+            return "key/value is None"
+        if query.device != key.device or query.device != value.device:
+            return "Q/K/V devices differ"
+        if query.dtype != key.dtype or query.dtype != value.dtype:
+            return "Q/K/V dtypes differ"
+        if incremental_state is not None:
+            return "incremental_state is enabled"
+        if static_kv:
+            return "static_kv is enabled"
+        if attn_mask is not None:
+            return "attn_mask is present"
+        if before_softmax:
+            return "before_softmax=True"
+        if need_weights:
+            return "need_weights=True"
+        if need_head_weights:
+            return "need_head_weights=True"
+        if self.onnx_trace:
+            return "ONNX tracing is enabled"
+        if self.add_zero_attn:
+            return "add_zero_attn is enabled"
+        return None
 
     def reset_parameters(self):
         if self.qkv_same_dim:
@@ -191,6 +237,25 @@ class MultiheadAttention(nn.Module):
         if need_head_weights:
             need_weights = True
 
+        sdpa_fallback_reason = None
+        use_sdpa_for_call = False
+        if self.use_sdpa:
+            sdpa_fallback_reason = self._sdpa_fallback_reason(
+                query=query,
+                key=key,
+                value=value,
+                incremental_state=incremental_state,
+                need_weights=need_weights,
+                static_kv=static_kv,
+                attn_mask=attn_mask,
+                before_softmax=before_softmax,
+                need_head_weights=need_head_weights,
+            )
+            use_sdpa_for_call = sdpa_fallback_reason is None
+            self.last_sdpa_fallback_reason = sdpa_fallback_reason
+        else:
+            self.last_sdpa_fallback_reason = None
+
         tgt_len, bsz, embed_dim = query.size()
         assert embed_dim == self.embed_dim
         assert list(query.size()) == [tgt_len, bsz, embed_dim]
@@ -201,12 +266,14 @@ class MultiheadAttention(nn.Module):
             and not self.onnx_trace
             and incremental_state is None
             and not static_kv
+            and not self.use_sdpa
             # A workaround for quantization to work. Otherwise JIT compilation
             # treats bias in linear module as method.
             and not torch.jit.is_scripting()
             and not need_head_weights
         ):
             assert key is not None and value is not None
+            self.last_attention_backend = "torch_mha"
             return F.multi_head_attention_forward(
                 query,
                 key,
@@ -355,6 +422,56 @@ class MultiheadAttention(nn.Module):
 
         if self.rot_emb:
             q, k = self.rot_emb(q, k)
+
+        if use_sdpa_for_call:
+            assert k is not None and v is not None
+            assert q.device == k.device == v.device
+            assert q.dtype == k.dtype == v.dtype
+
+            q_sdpa = q.contiguous().view(
+                bsz, self.num_heads, tgt_len, self.head_dim
+            )
+            k_sdpa = k.contiguous().view(
+                bsz, self.num_heads, src_len, self.head_dim
+            )
+            v_sdpa = v.contiguous().view(
+                bsz, self.num_heads, src_len, self.head_dim
+            )
+
+            sdpa_mask = None
+            if key_padding_mask is not None:
+                keep_mask = ~key_padding_mask.to(device=q.device, dtype=torch.bool)
+                # A no-op mask can prevent PyTorch from selecting its best kernel.
+                if not bool(keep_mask.all().item()):
+                    sdpa_mask = keep_mask[:, None, None, :]
+
+            dropout_p = self.dropout if self.training else 0.0
+            attn = F.scaled_dot_product_attention(
+                q_sdpa,
+                k_sdpa,
+                v_sdpa,
+                attn_mask=sdpa_mask,
+                dropout_p=dropout_p,
+                is_causal=False,
+                # q was already scaled above; do not apply 1/sqrt(d) twice.
+                scale=1.0,
+            )
+            assert list(attn.size()) == [
+                bsz,
+                self.num_heads,
+                tgt_len,
+                self.head_dim,
+            ]
+            attn = attn.transpose(1, 2).contiguous().view(bsz, tgt_len, embed_dim)
+            attn = attn.transpose(0, 1).contiguous()
+            attn = self.out_proj(attn)
+            self.last_attention_backend = "sdpa"
+            self.last_sdpa_fallback_reason = None
+            return attn, None
+
+        self.last_attention_backend = "manual"
+        if self.use_sdpa:
+            self.last_sdpa_fallback_reason = sdpa_fallback_reason
 
         attn_weights = torch.bmm(q, k.transpose(1, 2))
         attn_weights = MultiheadAttention.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
