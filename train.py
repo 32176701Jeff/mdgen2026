@@ -2,13 +2,16 @@ from mdgen.parsing import parse_train_args
 args = parse_train_args()
 use_sdpa = args.use_sdpa
 print_sdpa_backend = args.print_sdpa_backend
+attn_to_npy = args.attn_to_npy
 delattr(args, 'use_sdpa')
 delattr(args, 'print_sdpa_backend')
+delattr(args, 'attn_to_npy')
 from mdgen.logger import get_logger
 logger = get_logger(__name__)
 
 import torch, os, wandb
 from mdgen.dataset import MDGenDataset
+from mdgen.attn_capture import AttentionNpyCapture
 from mdgen.wrapper import NewMDGenWrapper
 from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 import pytorch_lightning as pl
@@ -178,6 +181,17 @@ val_loader = torch.utils.data.DataLoader(
     num_workers=args.num_workers,
 )
 model = NewMDGenWrapper(args, use_sdpa=use_sdpa)
+if attn_to_npy is not None:
+    attn_capture = AttentionNpyCapture(
+        model,
+        attn_to_npy,
+        run_mode='validation' if args.validate else 'training',
+        use_sdpa=use_sdpa,
+        seed=args.train_seed,
+        checkpoint=args.ckpt,
+    )
+    # Keep the capture and its hook handles alive for this trainer run.
+    model._attn_npy_capture = attn_capture
 
 callbacks = [
     ModelCheckpoint(

@@ -108,6 +108,16 @@ def parse_train_args():
         default=None,
         metavar='PATH',
     )
+    group.add_argument(
+        '--attn_to_npy',
+        type=str,
+        default=None,
+        metavar='FOLDER_PATH',
+        help=(
+            'Save the first train/validation evaluation from the final '
+            'residue, frame, and prepend-IPA MHA layers as NPY files.'
+        ),
+    )
     group.add_argument('--dropout', type=float, default=0.0)
     group.add_argument('--scale_factor', type=float, default=1.0)
     group.add_argument('--interleave_ipa', action='store_true')

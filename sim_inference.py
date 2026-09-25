@@ -16,6 +16,16 @@ parser.add_argument('--inference_seed', type=int, default=137)  #modify-inferenc
 parser.add_argument('--use_sdpa', action='store_true')
 parser.add_argument('--print_sdpa_backend', type=str, default=None, metavar='PATH')
 parser.add_argument(
+    '--attn_to_npy',
+    type=str,
+    default=None,
+    metavar='FOLDER_PATH',
+    help=(
+        'Save the first inference evaluation from the final residue, frame, '
+        'and prepend-IPA MHA layers as NPY files.'
+    ),
+)
+parser.add_argument(
     '--deterministic',
     action=argparse.BooleanOptionalAction,
     default=True,
@@ -35,6 +45,7 @@ import os, torch, mdtraj, tqdm, time
 import numpy as np
 from pytorch_lightning import seed_everything  #modify-inferenceseed
 from mdgen.geometry import atom14_to_frames, atom14_to_atom37, atom37_to_torsions
+from mdgen.attn_capture import AttentionNpyCapture
 from mdgen.residue_constants import restype_order, restype_atom37_mask
 from mdgen.tensor_utils import tensor_tree_map
 from mdgen.wrapper import NewMDGenWrapper
@@ -151,7 +162,6 @@ def write_sdpa_backend_report(model, profiler):
         handle.write('\n'.join(lines) + '\n')
     model._sdpa_backend_reported = True
     print(f'SDPA backend report saved to: {output_path}')
-
 
 
 def get_batch(name, seqres, position_ids, num_frames):
@@ -289,7 +299,19 @@ def main():
         weights_only=False,
     )
     model.eval().float().to('cuda')
-    
+
+    attn_capture = None
+    if args.attn_to_npy is not None:
+        attn_capture = AttentionNpyCapture(
+            model,
+            args.attn_to_npy,
+            run_mode='inference',
+            use_sdpa=args.use_sdpa,
+            seed=args.inference_seed,
+            checkpoint=args.sim_ckpt,
+        )
+        # Keep the capture and its hook handles alive for the inference run.
+        model._attn_npy_capture = attn_capture
     
     df = pd.read_csv(args.split, index_col='name')
     for name in df.index:
@@ -300,6 +322,8 @@ def main():
             position_ids = json.loads(df.position_ids[name])
         else:
             position_ids = list(range(len(seqres)))
+        if attn_capture is not None:
+            attn_capture.set_sample_name(name)
         do(model, name, seqres, position_ids)
         
 
