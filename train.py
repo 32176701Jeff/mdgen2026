@@ -144,7 +144,9 @@ class SDPABackendReportCallback(pl.Callback):
 
 pl.seed_everything(args.train_seed, workers=True)  #modify-trainseed
 
-torch.set_float32_matmul_precision('medium')
+torch.set_float32_matmul_precision('highest')
+torch.backends.cuda.matmul.allow_tf32 = False
+torch.backends.cudnn.allow_tf32 = False
 
 if args.wandb:
     wandb.init(

@@ -59,7 +59,13 @@ def parse_train_args():
     group.add_argument('--ema', action='store_true')
     group.add_argument('--ema_decay', type=float, default=0.999)
     group.add_argument("--lr", type=float, default=1e-4)
-    group.add_argument('--precision', type=str, default='32-true')
+    group.add_argument(
+        '--precision',
+        type=str,
+        choices=('32-true',),
+        default='32-true',
+        help='Fixed to full FP32 precision.',
+    )
     
     ## Training data 
     group = parser.add_argument_group("Training data settings")

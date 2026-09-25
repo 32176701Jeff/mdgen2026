@@ -44,6 +44,9 @@ import pandas as pd
 seed_everything(args.inference_seed, workers=True)  #modify-inferenceseed
 torch.use_deterministic_algorithms(args.deterministic)
 torch.backends.cudnn.benchmark = args.benchmark
+torch.set_float32_matmul_precision('highest')
+torch.backends.cuda.matmul.allow_tf32 = False
+torch.backends.cudnn.allow_tf32 = False
 
 
 os.makedirs(args.out_dir, exist_ok=True)
@@ -155,7 +158,8 @@ def get_batch(name, seqres, position_ids, num_frames):
     arr = np.lib.format.open_memmap(f'{args.data_dir}/{name}{args.suffix}.npy', 'r')
 
     if not args.tps: # else keep all frames
-        arr = np.copy(arr[0:1]).astype(np.float32)
+        arr = arr[0:1]
+    arr = np.array(arr, dtype=np.float32, copy=True)
 
     position_ids = torch.as_tensor(position_ids, dtype=torch.long)
     if position_ids.ndim != 1 or len(position_ids) != len(seqres):
@@ -284,7 +288,7 @@ def main():
         use_sdpa=args.use_sdpa,
         weights_only=False,
     )
-    model.eval().to('cuda')
+    model.eval().float().to('cuda')
     
     
     df = pd.read_csv(args.split, index_col='name')
