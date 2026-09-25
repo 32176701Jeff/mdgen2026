@@ -182,7 +182,8 @@ class LatentMDGenModel(nn.Module):
             start_frames,
             end_frames,
             aatype,
-            x_d=None
+            x_d=None,
+            position_ids=None,
     ):
         if self.args.sim_condition or self.args.mpnn:
             B, L = mask.shape
@@ -192,7 +193,10 @@ class LatentMDGenModel(nn.Module):
             if self.args.design:
                 x = x + self.x_d_to_emb(x_d)  # pass in only the simplex data
             for layer in self.ipa_layers:
-                x = layer(x, t, mask, frames=start_frames)
+                x = layer(
+                    x, t, mask, frames=start_frames,
+                    position_ids=position_ids,
+                )
         elif self.args.tps_condition or self.args.inpainting or self.args.dynamic_mpnn:
             x_f = start_frames.invert().compose(end_frames).to_tensor_7()
             x_r = end_frames.invert().compose(start_frames).to_tensor_7()
@@ -205,8 +209,14 @@ class LatentMDGenModel(nn.Module):
                 x_f = x_f + self.x_d_to_emb(x_d)
                 x_r = x_r + self.x_d_to_emb(x_d)
             for layer in self.ipa_layers:
-                x_r = layer(x_r, t, mask, frames=start_frames)
-                x_f = layer(x_f, t, mask, frames=end_frames)
+                x_r = layer(
+                    x_r, t, mask, frames=start_frames,
+                    position_ids=position_ids,
+                )
+                x_f = layer(
+                    x_f, t, mask, frames=end_frames,
+                    position_ids=position_ids,
+                )
             x = (x_r + x_f)
 
         # x = x[:, None] + x_latent
@@ -246,10 +256,17 @@ class LatentMDGenModel(nn.Module):
         t = self.t_embedder(t * self.args.time_multiplier)[:, None]
 
         if self.args.prepend_ipa:  # IPA doesn't need checkpointing
-            x = x + self.run_ipa(t[:, 0], mask[:, 0], start_frames, end_frames, aatype, x_d=x_d)[:, None]
+            x = x + self.run_ipa(
+                t[:, 0], mask[:, 0], start_frames, end_frames, aatype,
+                x_d=x_d, position_ids=position_ids,
+            )[:, None]
 
         for layer_idx, layer in enumerate(self.layers):
-            x = grad_checkpoint(layer, (x, t, mask, start_frames), self.args.grad_checkpointing)
+            x = grad_checkpoint(
+                layer,
+                (x, t, mask, start_frames, position_ids),
+                self.args.grad_checkpointing,
+            )
 
         if not (self.args.dynamic_mpnn or self.args.mpnn):
             latent = self.emb_to_latent(x, t)
@@ -331,7 +348,7 @@ class AttentionWithRoPE(nn.Module):
         super().__init__()
         self.attn = MultiheadAttention(*args, **kwargs)
 
-    def forward(self, x, mask):
+    def forward(self, x, mask, position_ids=None):
         x = x.transpose(0, 1)
         x, _ = self.attn(
             query=x,
@@ -339,6 +356,7 @@ class AttentionWithRoPE(nn.Module):
             value=x,
             key_padding_mask=1 - mask,
             need_weights=False,
+            position_ids=position_ids,
         )
         x = x.transpose(0, 1)
         return x
@@ -390,14 +408,14 @@ class IPALayer(nn.Module):
 
         self.final_layer_norm = nn.LayerNorm(self.embed_dim, elementwise_affine=False, eps=1e-6)
 
-    def forward(self, x, t, mask=None, frames=None):
+    def forward(self, x, t, mask=None, frames=None, position_ids=None):
         shift_msa_l, scale_msa_l, gate_msa_l, \
             shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(t).chunk(6, dim=-1)
         x = x + self.ipa(self.ipa_norm(x), frames, frame_mask=mask)
 
         residual = x
         x = modulate(self.mha_layer_norm(x), shift_msa_l, scale_msa_l)
-        x = self.mha_l(x, mask=mask)
+        x = self.mha_l(x, mask=mask, position_ids=position_ids)
         x = residual + gate_msa_l.unsqueeze(1) * x
 
         residual = x
@@ -478,8 +496,21 @@ class LatentMDGenLayer(nn.Module):
 
         self.final_layer_norm = nn.LayerNorm(self.embed_dim, elementwise_affine=False, eps=1e-6)
 
-    def forward(self, x, t, mask=None, frames=None):
+    def forward(self, x, t, mask=None, frames=None, position_ids=None):
         B, T, L, C = x.shape
+
+        residue_position_ids = None
+        if position_ids is not None:
+            if position_ids.shape != (B, L):
+                raise ValueError(
+                    'position_ids must have shape '
+                    f'(B, L) = {(B, L)}, got {tuple(position_ids.shape)}'
+                )
+            residue_position_ids = (
+                position_ids[:, None, :]
+                .expand(B, T, L)
+                .reshape(B * T, L)
+            )
 
         shift_msa_l, scale_msa_l, gate_msa_l, \
             shift_msa_t, scale_msa_t, gate_msa_t, \
@@ -493,6 +524,7 @@ class LatentMDGenLayer(nn.Module):
         x = self.mha_l(
             x.reshape(B * T, L, C),
             mask=mask.reshape(B * T, L),  # [:,None].expand(-1, T, -1).reshape(B * T, L)
+            position_ids=residue_position_ids,
         ).reshape(B, T, L, C)
         x = residual + gate_msa_l.unsqueeze(1) * x
 

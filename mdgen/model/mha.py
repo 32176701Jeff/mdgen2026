@@ -16,6 +16,18 @@ from esm.rotary_embedding import RotaryEmbedding
 import uuid
 
 
+class RotaryEmbeddingWithPositionIds(RotaryEmbedding):
+    """Keep the RoPE call site ready for explicit residue positions.
+
+    fair-esm currently derives positions internally with ``arange``.  The
+    explicit IDs are intentionally accepted but not applied yet, so plumbing
+    them through MDGen does not change the existing model numerics.
+    """
+
+    def forward(self, q, k, position_ids=None):
+        return super().forward(q, k)
+
+
 def utils_softmax(x, dim: int, onnx_trace: bool = False):
     if onnx_trace:
         return F.softmax(x.float(), dim=dim)
@@ -132,7 +144,7 @@ class MultiheadAttention(nn.Module):
         self.onnx_trace = False
         self.rot_emb = None
         if use_rotary_embeddings:
-            self.rot_emb = RotaryEmbedding(dim=self.head_dim)
+            self.rot_emb = RotaryEmbeddingWithPositionIds(dim=self.head_dim)
 
         self.enable_torch_version = False
         if hasattr(F, "multi_head_attention_forward"):
@@ -216,6 +228,7 @@ class MultiheadAttention(nn.Module):
         attn_mask: Optional[Tensor] = None,
         before_softmax: bool = False,
         need_head_weights: bool = False,
+        position_ids: Optional[Tensor] = None,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
 
@@ -421,7 +434,7 @@ class MultiheadAttention(nn.Module):
                 )
 
         if self.rot_emb:
-            q, k = self.rot_emb(q, k)
+            q, k = self.rot_emb(q, k, position_ids=position_ids)
 
         if use_sdpa_for_call:
             assert k is not None and v is not None
