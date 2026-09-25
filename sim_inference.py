@@ -15,7 +15,21 @@ parser.add_argument('--split', type=str, default='splits/4AA_test.csv')
 parser.add_argument('--inference_seed', type=int, default=137)  #modify-inferenceseed
 parser.add_argument('--use_sdpa', action='store_true')
 parser.add_argument('--print_sdpa_backend', type=str, default=None, metavar='PATH')
+parser.add_argument(
+    '--deterministic',
+    action=argparse.BooleanOptionalAction,
+    default=True,
+    help='Use deterministic algorithms when available.',
+)
+parser.add_argument(
+    '--benchmark',
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help='Enable the cuDNN benchmark autotuner.',
+)
 args = parser.parse_args()
+if args.deterministic and args.benchmark:
+    parser.error('--deterministic and --benchmark cannot both be enabled')
 
 import os, torch, mdtraj, tqdm, time
 import numpy as np
@@ -28,6 +42,8 @@ from mdgen.utils import atom14_to_pdb
 import pandas as pd
 
 seed_everything(args.inference_seed, workers=True)  #modify-inferenceseed
+torch.use_deterministic_algorithms(args.deterministic)
+torch.backends.cudnn.benchmark = args.benchmark
 
 
 os.makedirs(args.out_dir, exist_ok=True)

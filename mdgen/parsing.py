@@ -1,3 +1,4 @@
+import argparse
 from argparse import ArgumentParser
 import os
 
@@ -11,6 +12,18 @@ def parse_train_args():
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--train_seed", type=int, default=137)  #modify-trainseed
     parser.add_argument("--model_dir",type=str,default=None,help="Directory used as MODEL_DIR",)
+    parser.add_argument(
+        "--deterministic",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use deterministic algorithms when available.",
+    )
+    parser.add_argument(
+        "--benchmark",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable the cuDNN benchmark autotuner.",
+    )
     
     ## Epoch settings
     group = parser.add_argument_group("Epoch settings")
@@ -131,6 +144,10 @@ def parse_train_args():
     group.add_argument('--cond_interval', type=int, default=None) # for superresolution
     
     args = parser.parse_args()
+    if args.deterministic and args.benchmark:
+        parser.error(
+            "--deterministic and --benchmark cannot both be enabled"
+        )
     if args.model_dir is not None:
         os.environ["MODEL_DIR"] = os.path.join(args.model_dir, args.run_name)
     else:
