@@ -536,6 +536,7 @@ class LatentMDGenLayer(nn.Module):
                 x.transpose(1, 2).reshape(B * L, T, C)
             ).reshape(B, L, T, C).transpose(1, 2)
         else:
+            # sdpa-time-axis-mask
             x = self.mha_t(
                 x.transpose(1, 2).reshape(B * L, T, C),
                 mask=mask.transpose(1, 2).reshape(B * L, T)

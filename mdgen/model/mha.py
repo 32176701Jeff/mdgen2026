@@ -342,6 +342,7 @@ class MultiheadAttention(nn.Module):
             v = self.v_proj(value)
         q *= self.scaling
 
+        # sdpa-bias-kv
         if self.bias_k is not None:
             assert self.bias_v is not None
             k = torch.cat([k, self.bias_k.repeat(1, bsz, 1)])
@@ -441,6 +442,7 @@ class MultiheadAttention(nn.Module):
             assert q.device == k.device == v.device
             assert q.dtype == k.dtype == v.dtype
 
+            # sdpa-layout-output
             q_sdpa = q.contiguous().view(
                 bsz, self.num_heads, tgt_len, self.head_dim
             )
@@ -451,6 +453,7 @@ class MultiheadAttention(nn.Module):
                 bsz, self.num_heads, src_len, self.head_dim
             )
 
+            # sdpa-mask
             sdpa_mask = None
             if key_padding_mask is not None:
                 keep_mask = ~key_padding_mask.to(device=q.device, dtype=torch.bool)
@@ -458,6 +461,8 @@ class MultiheadAttention(nn.Module):
                 if not bool(keep_mask.all().item()):
                     sdpa_mask = keep_mask[:, None, None, :]
 
+            # sdpa-scaling
+            # sdpa-dropout
             dropout_p = self.dropout if self.training else 0.0
             attn = F.scaled_dot_product_attention(
                 q_sdpa,
