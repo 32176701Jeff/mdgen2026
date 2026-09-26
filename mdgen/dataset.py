@@ -50,9 +50,19 @@ class MDGenDataset(torch.utils.data.Dataset):
         if self.args.frame_interval:
             arr = arr[::self.args.frame_interval]
         
-        frame_start = np.random.choice(np.arange(arr.shape[0] - self.args.num_frames))
-        if self.args.overfit_frame:
+        available_frames = arr.shape[0]
+        requested_frames = self.args.num_frames
+        if available_frames < requested_frames:
+            raise ValueError(
+                f'{full_name}: requested {requested_frames} frames, '
+                f'but NPY only contains {available_frames}'
+            )
+
+        max_start = available_frames - requested_frames
+        if self.args.overfit_frame or max_start == 0:
             frame_start = 0
+        else:
+            frame_start = np.random.randint(0, max_start + 1)
         end = frame_start + self.args.num_frames
         # arr = np.copy(arr[frame_start:end]) * 10 # convert to angstroms
         arr = np.copy(arr[frame_start:end]).astype(np.float32) # / 10.0 # convert to nm
