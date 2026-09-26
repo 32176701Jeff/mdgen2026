@@ -12,6 +12,7 @@ parser.add_argument('--tps', action='store_true')
 parser.add_argument('--xtc', action='store_true')
 parser.add_argument('--out_dir', type=str, default=".")
 parser.add_argument('--split', type=str, default='splits/4AA_test.csv')
+# seed-deterministic-args
 parser.add_argument('--inference_seed', type=int, default=137)  #modify-inferenceseed
 parser.add_argument('--use_sdpa', action='store_true')
 parser.add_argument('--print_sdpa_backend', type=str, default=None, metavar='PATH')
@@ -38,6 +39,7 @@ parser.add_argument(
     help='Enable the cuDNN benchmark autotuner.',
 )
 args = parser.parse_args()
+# deterministic-benchmark-guard
 if args.deterministic and args.benchmark:
     parser.error('--deterministic and --benchmark cannot both be enabled')
 
@@ -52,7 +54,9 @@ from mdgen.wrapper import NewMDGenWrapper
 from mdgen.utils import atom14_to_pdb
 import pandas as pd
 
+# seed-initialization
 seed_everything(args.inference_seed, workers=True)  #modify-inferenceseed
+# deterministic-execution
 torch.use_deterministic_algorithms(args.deterministic)
 torch.backends.cudnn.benchmark = args.benchmark
 # fp32-matmul-precision

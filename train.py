@@ -145,6 +145,7 @@ class SDPABackendReportCallback(pl.Callback):
             handle.write('\n'.join(lines) + '\n')
 
 
+# seed-initialization
 pl.seed_everything(args.train_seed, workers=True)  #modify-trainseed
 
 # fp32-matmul-precision
@@ -208,6 +209,7 @@ if print_sdpa_backend is not None:
 
 trainer = pl.Trainer(
     accelerator="gpu" if torch.cuda.is_available() else 'auto',
+    # deterministic-execution
     deterministic=args.deterministic,
     benchmark=args.benchmark,
     max_epochs=args.epochs,
