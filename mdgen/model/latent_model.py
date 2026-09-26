@@ -175,6 +175,7 @@ class LatentMDGenModel(nn.Module):
             nn.init.constant_(self.emb_to_latent.linear.weight, 0)
             nn.init.constant_(self.emb_to_latent.linear.bias, 0)
 
+    # position-id-model-routing
     def run_ipa(
             self,
             t,
@@ -499,6 +500,7 @@ class LatentMDGenLayer(nn.Module):
     def forward(self, x, t, mask=None, frames=None, position_ids=None):
         B, T, L, C = x.shape
 
+        # position-id-residue-layout
         residue_position_ids = None
         if position_ids is not None:
             if position_ids.shape != (B, L):

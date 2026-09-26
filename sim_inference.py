@@ -321,6 +321,7 @@ def main():
         if args.pdb_id and name not in args.pdb_id:
             continue
         seqres = df.seqres[name]
+        # position-id-inference-input
         if 'position_ids' in df.columns:
             position_ids = json.loads(df.position_ids[name])
         else:

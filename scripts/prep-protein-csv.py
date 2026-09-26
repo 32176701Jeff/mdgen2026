@@ -134,6 +134,7 @@ def build_manifest_row(protein_name: str, pdb_path: Path) -> dict[str, str]:
                 f"found {previous} followed by {current}."
             )
 
+    # position-id-csv
     minimum_position = min(residue_numbers)
     position_ids = [position - minimum_position for position in residue_numbers]
     seqres = "".join(AMINO_ACID_3TO1[record[3]] for record in residues)

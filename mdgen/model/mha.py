@@ -16,6 +16,7 @@ from esm.rotary_embedding import RotaryEmbedding
 import uuid
 
 
+# position-id-rope-interface
 class RotaryEmbeddingWithPositionIds(RotaryEmbedding):
     """Keep the RoPE call site ready for explicit residue positions.
 
