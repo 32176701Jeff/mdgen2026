@@ -55,6 +55,8 @@ import pandas as pd
 seed_everything(args.inference_seed, workers=True)  #modify-inferenceseed
 torch.use_deterministic_algorithms(args.deterministic)
 torch.backends.cudnn.benchmark = args.benchmark
+# fp32-matmul-precision
+# fp32-disable-tf32
 torch.set_float32_matmul_precision('highest')
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
@@ -298,6 +300,7 @@ def main():
         use_sdpa=args.use_sdpa,
         weights_only=False,
     )
+    # fp32-inference-model
     model.eval().float().to('cuda')
 
     attn_capture = None
