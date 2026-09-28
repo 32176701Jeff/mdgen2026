@@ -25,7 +25,7 @@ class MDGenDataset(torch.utils.data.Dataset):
         if self.args.overfit_peptide is None:
             name = self.df.index[idx]
             seqres = self.df.seqres[name]
-            # position-id-dataset
+            # position-id-dataset:start
             if 'position_ids' in self.df.columns:
                 position_ids = np.asarray(json.loads(self.df.position_ids[name]), dtype=np.int64)
             else:
@@ -40,6 +40,7 @@ class MDGenDataset(torch.utils.data.Dataset):
                 f'{name}: seqres length {len(seqres)} does not match '
                 f'position_ids shape {position_ids.shape}'
             )
+        # position-id-dataset:end
 
         if self.args.atlas:
             i = np.random.randint(1, 4)
@@ -91,7 +92,7 @@ class MDGenDataset(torch.utils.data.Dataset):
         
         torsion_mask = torsion_mask[0]
         
-        # position-id-crop-padding
+        # position-id-crop-padding:start
         if self.args.atlas:
             if L > self.args.crop:
                 start = np.random.randint(0, L - self.args.crop + 1)
@@ -114,6 +115,7 @@ class MDGenDataset(torch.utils.data.Dataset):
                 position_ids = np.concatenate([position_ids, np.zeros(pad, dtype=np.int64)])
                 torsions = torch.cat([torsions, torch.zeros((torsions.shape[0], pad, 7, 2), dtype=torch.float32)], 1)
                 torsion_mask = torch.cat([torsion_mask, torch.zeros((pad, 7), dtype=torch.float32)])
+        # position-id-crop-padding:end
 
         return {
             'name': full_name,

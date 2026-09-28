@@ -175,7 +175,7 @@ class LatentMDGenModel(nn.Module):
             nn.init.constant_(self.emb_to_latent.linear.weight, 0)
             nn.init.constant_(self.emb_to_latent.linear.bias, 0)
 
-    # position-id-model-routing
+    # position-id-model-routing:start
     def run_ipa(
             self,
             t,
@@ -342,6 +342,7 @@ class LatentMDGenModel(nn.Module):
             flow = (flow_probs.unsqueeze(-2) * cond_flows).sum(-1) * dalpha_dt
 
             return torch.cat([latent_continuous, flow], -1)
+    # position-id-model-routing:end
 
 
 class AttentionWithRoPE(nn.Module):
@@ -500,7 +501,7 @@ class LatentMDGenLayer(nn.Module):
     def forward(self, x, t, mask=None, frames=None, position_ids=None):
         B, T, L, C = x.shape
 
-        # position-id-residue-layout
+        # position-id-residue-layout:start
         residue_position_ids = None
         if position_ids is not None:
             if position_ids.shape != (B, L):
@@ -528,6 +529,7 @@ class LatentMDGenLayer(nn.Module):
             mask=mask.reshape(B * T, L),  # [:,None].expand(-1, T, -1).reshape(B * T, L)
             position_ids=residue_position_ids,
         ).reshape(B, T, L, C)
+        # position-id-residue-layout:end
         x = residual + gate_msa_l.unsqueeze(1) * x
 
         residual = x
@@ -538,11 +540,12 @@ class LatentMDGenLayer(nn.Module):
                 x.transpose(1, 2).reshape(B * L, T, C)
             ).reshape(B, L, T, C).transpose(1, 2)
         else:
-            # sdpa-time-axis-mask
+            # sdpa-time-axis-mask:start
             x = self.mha_t(
                 x.transpose(1, 2).reshape(B * L, T, C),
                 mask=mask.transpose(1, 2).reshape(B * L, T)
             ).reshape(B, L, T, C).transpose(1, 2)
+            # sdpa-time-axis-mask:end
         x = residual + gate_msa_t.unsqueeze(1) * x
 
         residual = x

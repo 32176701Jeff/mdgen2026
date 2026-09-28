@@ -12,8 +12,8 @@ parser.add_argument('--tps', action='store_true')
 parser.add_argument('--xtc', action='store_true')
 parser.add_argument('--out_dir', type=str, default=".")
 parser.add_argument('--split', type=str, default='splits/4AA_test.csv')
-# seed-deterministic-args
-parser.add_argument('--inference_seed', type=int, default=137) 
+# seed-deterministic-args:start
+parser.add_argument('--inference_seed', type=int, default=137)
 parser.add_argument('--use_sdpa', action='store_true')
 parser.add_argument('--print_sdpa_backend', type=str, default=None, metavar='PATH')
 parser.add_argument(
@@ -38,14 +38,16 @@ parser.add_argument(
     default=False,
     help='Enable the cuDNN benchmark autotuner.',
 )
+# seed-deterministic-args:end
 args = parser.parse_args()
-# deterministic-benchmark-guard
+# deterministic-benchmark-guard:start
 if args.deterministic and args.benchmark:
     parser.error('--deterministic and --benchmark cannot both be enabled')
+# deterministic-benchmark-guard:end
 
 import os, torch, mdtraj, tqdm, time
 import numpy as np
-from pytorch_lightning import seed_everything 
+from pytorch_lightning import seed_everything
 from mdgen.geometry import atom14_to_frames, atom14_to_atom37, atom37_to_torsions
 from mdgen.attn_capture import AttentionNpyCapture
 from mdgen.residue_constants import restype_order, restype_atom37_mask
@@ -54,16 +56,14 @@ from mdgen.wrapper import NewMDGenWrapper
 from mdgen.utils import atom14_to_pdb
 import pandas as pd
 
-# seed-initialization
-seed_everything(args.inference_seed, workers=True) 
-# deterministic-execution
-torch.use_deterministic_algorithms(args.deterministic)
+seed_everything(args.inference_seed, workers=True)  # seed-initialization
+torch.use_deterministic_algorithms(args.deterministic)  # deterministic-execution
 torch.backends.cudnn.benchmark = args.benchmark
-# fp32-matmul-precision
-# fp32-disable-tf32
-torch.set_float32_matmul_precision('highest')
+torch.set_float32_matmul_precision('highest')  # fp32-matmul-precision
+# fp32-disable-tf32:start
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
+# fp32-disable-tf32:end
 
 
 os.makedirs(args.out_dir, exist_ok=True)
@@ -302,8 +302,7 @@ def main():
         use_sdpa=args.use_sdpa,
         weights_only=False,
     )
-    # fp32-inference-model
-    model.eval().float().to('cuda')
+    model.eval().float().to('cuda')  # fp32-inference-model
 
     attn_capture = None
     if args.attn_to_npy is not None:
@@ -322,11 +321,12 @@ def main():
         if args.pdb_id and name not in args.pdb_id:
             continue
         seqres = df.seqres[name]
-        # position-id-inference-input
+        # position-id-inference-input:start
         if 'position_ids' in df.columns:
             position_ids = json.loads(df.position_ids[name])
         else:
             position_ids = list(range(len(seqres)))
+        # position-id-inference-input:end
         if attn_capture is not None:
             attn_capture.set_sample_name(name)
         do(model, name, seqres, position_ids)

@@ -251,8 +251,7 @@ class NewMDGenWrapper(Wrapper):
                 'start_frames': rigids,
                 'mask': batch['mask'].unsqueeze(1).expand(-1, T, -1),
                 'aatype': torch.where(aatype_mask.bool(), batch['seqres'], 20),
-                # position-id-wrapper
-                'position_ids': batch.get('position_ids'),
+                'position_ids': batch.get('position_ids'),  # position-id-wrapper
                 'x_cond': torch.where(cond_mask.unsqueeze(-1).bool(), batch['latents'].float(), 0.0),
                 'x_cond_mask': cond_mask,
             }
@@ -281,8 +280,7 @@ class NewMDGenWrapper(Wrapper):
             'model_kwargs': {
                 'mask': mask,
                 'aatype': torch.where(aatype_mask.bool(), batch['seqres'], 20),
-                # position-id-wrapper
-                'position_ids': batch.get('position_ids'),
+                'position_ids': batch.get('position_ids'),  # position-id-wrapper
                 'x_cond': torch.where(cond_mask.unsqueeze(-1).bool(), latents, 0.0),
                 'x_cond_mask': cond_mask,
             }
@@ -368,8 +366,7 @@ class NewMDGenWrapper(Wrapper):
                 'end_frames': rigids[:, -1],
                 'mask': batch['mask'].unsqueeze(1).expand(-1, T, -1),
                 'aatype': torch.where(aatype_mask.bool(), batch['seqres'], 20),
-                # position-id-wrapper
-                'position_ids': batch.get('position_ids'),
+                'position_ids': batch.get('position_ids'),  # position-id-wrapper
                 'x_cond': torch.where(cond_mask.unsqueeze(-1).bool(), latents, 0.0),
                 'x_cond_mask': cond_mask,
             }

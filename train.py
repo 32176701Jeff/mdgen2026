@@ -143,14 +143,13 @@ class SDPABackendReportCallback(pl.Callback):
             handle.write('\n'.join(lines) + '\n')
 
 
-# seed-initialization
-pl.seed_everything(args.train_seed, workers=True) 
+pl.seed_everything(args.train_seed, workers=True)  # seed-initialization
 
-# fp32-matmul-precision
-# fp32-disable-tf32
-torch.set_float32_matmul_precision('highest')
+torch.set_float32_matmul_precision('highest')  # fp32-matmul-precision
+# fp32-disable-tf32:start
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
+# fp32-disable-tf32:end
 
 if args.wandb:
     wandb.init(
@@ -206,9 +205,10 @@ if print_sdpa_backend is not None:
 
 trainer = pl.Trainer(
     accelerator="gpu" if torch.cuda.is_available() else 'auto',
-    # deterministic-execution
+    # deterministic-execution:start
     deterministic=args.deterministic,
     benchmark=args.benchmark,
+    # deterministic-execution:end
     max_epochs=args.epochs,
     limit_train_batches=args.train_batches or 1.0,
     limit_val_batches=0.0 if args.no_validate else (args.val_batches or 1.0),

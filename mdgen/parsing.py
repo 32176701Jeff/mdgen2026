@@ -10,7 +10,7 @@ def parse_train_args():
     parser.add_argument("--ckpt", type=str, default=None)
     parser.add_argument("--validate", action='store_true', default=False)
     parser.add_argument("--num_workers", type=int, default=4)
-    # seed-deterministic-args
+    # seed-deterministic-args:start
     parser.add_argument("--train_seed", type=int, default=137)
     parser.add_argument("--model_dir",type=str,default=None,help="Directory used as MODEL_DIR",)
     parser.add_argument(
@@ -25,6 +25,7 @@ def parse_train_args():
         default=False,
         help="Enable the cuDNN benchmark autotuner.",
     )
+    # seed-deterministic-args:end
     
     ## Epoch settings
     group = parser.add_argument_group("Epoch settings")
@@ -60,7 +61,7 @@ def parse_train_args():
     group.add_argument('--ema', action='store_true')
     group.add_argument('--ema_decay', type=float, default=0.999)
     group.add_argument("--lr", type=float, default=1e-4)
-    # fp32-training-precision
+    # fp32-training-precision:start
     group.add_argument(
         '--precision',
         type=str,
@@ -68,6 +69,7 @@ def parse_train_args():
         default='32-true',
         help='Fixed to full FP32 precision.',
     )
+    # fp32-training-precision:end
     
     ## Training data 
     group = parser.add_argument_group("Training data settings")
@@ -162,11 +164,12 @@ def parse_train_args():
     group.add_argument('--cond_interval', type=int, default=None) # for superresolution
     
     args = parser.parse_args()
-    # deterministic-benchmark-guard
+    # deterministic-benchmark-guard:start
     if args.deterministic and args.benchmark:
         parser.error(
             "--deterministic and --benchmark cannot both be enabled"
         )
+    # deterministic-benchmark-guard:end
     if args.model_dir is not None:
         os.environ["MODEL_DIR"] = os.path.join(args.model_dir, args.run_name)
     else:

@@ -342,7 +342,7 @@ class MultiheadAttention(nn.Module):
             v = self.v_proj(value)
         q *= self.scaling
 
-        # sdpa-bias-kv
+        # sdpa-bias-kv:start
         if self.bias_k is not None:
             assert self.bias_v is not None
             k = torch.cat([k, self.bias_k.repeat(1, bsz, 1)])
@@ -359,6 +359,7 @@ class MultiheadAttention(nn.Module):
                     ],
                     dim=1,
                 )
+        # sdpa-bias-kv:end
 
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
         if k is not None:
@@ -442,7 +443,7 @@ class MultiheadAttention(nn.Module):
             assert q.device == k.device == v.device
             assert q.dtype == k.dtype == v.dtype
 
-            # sdpa-layout-output
+            # sdpa-layout-output:start
             q_sdpa = q.contiguous().view(
                 bsz, self.num_heads, tgt_len, self.head_dim
             )
@@ -452,17 +453,17 @@ class MultiheadAttention(nn.Module):
             v_sdpa = v.contiguous().view(
                 bsz, self.num_heads, src_len, self.head_dim
             )
+            # sdpa-layout-output:end
 
-            # sdpa-mask
+            # sdpa-mask:start
             sdpa_mask = None
             if key_padding_mask is not None:
                 keep_mask = ~key_padding_mask.to(device=q.device, dtype=torch.bool)
                 if not bool(keep_mask.all().item()):
                     sdpa_mask = keep_mask[:, None, None, :]
+            # sdpa-mask:end
 
-            # sdpa-scaling
-            # sdpa-dropout
-            dropout_p = self.dropout if self.training else 0.0
+            dropout_p = self.dropout if self.training else 0.0  # sdpa-dropout
             attn = F.scaled_dot_product_attention(
                 q_sdpa,
                 k_sdpa,
@@ -470,7 +471,7 @@ class MultiheadAttention(nn.Module):
                 attn_mask=sdpa_mask,
                 dropout_p=dropout_p,
                 is_causal=False,
-                scale=1.0,
+                scale=1.0,  # sdpa-scaling
             )
             assert list(attn.size()) == [
                 bsz,
@@ -478,9 +479,11 @@ class MultiheadAttention(nn.Module):
                 tgt_len,
                 self.head_dim,
             ]
+            # sdpa-layout-output:start
             attn = attn.transpose(1, 2).contiguous().view(bsz, tgt_len, embed_dim)
             attn = attn.transpose(0, 1).contiguous()
             attn = self.out_proj(attn)
+            # sdpa-layout-output:end
             self.last_attention_backend = "sdpa"
             self.last_sdpa_fallback_reason = None
             return attn, None
