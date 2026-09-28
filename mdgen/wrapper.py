@@ -47,7 +47,6 @@ class Wrapper(pl.LightningModule):
 
     def __init__(self, args):
         super().__init__()
-        # Persist only model args; runtime backend switches stay out of checkpoints.
         self.save_hyperparameters("args")
         self.args = args
         self._log = defaultdict(list)

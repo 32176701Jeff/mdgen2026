@@ -11,7 +11,7 @@ def parse_train_args():
     parser.add_argument("--validate", action='store_true', default=False)
     parser.add_argument("--num_workers", type=int, default=4)
     # seed-deterministic-args
-    parser.add_argument("--train_seed", type=int, default=137)  #modify-trainseed
+    parser.add_argument("--train_seed", type=int, default=137)
     parser.add_argument("--model_dir",type=str,default=None,help="Directory used as MODEL_DIR",)
     parser.add_argument(
         "--deterministic",

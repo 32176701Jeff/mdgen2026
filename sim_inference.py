@@ -13,7 +13,7 @@ parser.add_argument('--xtc', action='store_true')
 parser.add_argument('--out_dir', type=str, default=".")
 parser.add_argument('--split', type=str, default='splits/4AA_test.csv')
 # seed-deterministic-args
-parser.add_argument('--inference_seed', type=int, default=137)  #modify-inferenceseed
+parser.add_argument('--inference_seed', type=int, default=137) 
 parser.add_argument('--use_sdpa', action='store_true')
 parser.add_argument('--print_sdpa_backend', type=str, default=None, metavar='PATH')
 parser.add_argument(
@@ -45,7 +45,7 @@ if args.deterministic and args.benchmark:
 
 import os, torch, mdtraj, tqdm, time
 import numpy as np
-from pytorch_lightning import seed_everything  #modify-inferenceseed
+from pytorch_lightning import seed_everything 
 from mdgen.geometry import atom14_to_frames, atom14_to_atom37, atom37_to_torsions
 from mdgen.attn_capture import AttentionNpyCapture
 from mdgen.residue_constants import restype_order, restype_atom37_mask
@@ -55,7 +55,7 @@ from mdgen.utils import atom14_to_pdb
 import pandas as pd
 
 # seed-initialization
-seed_everything(args.inference_seed, workers=True)  #modify-inferenceseed
+seed_everything(args.inference_seed, workers=True) 
 # deterministic-execution
 torch.use_deterministic_algorithms(args.deterministic)
 torch.backends.cudnn.benchmark = args.benchmark
@@ -69,7 +69,6 @@ torch.backends.cudnn.allow_tf32 = False
 os.makedirs(args.out_dir, exist_ok=True)
 
 
-# Map the dispatched ATen operator to the SDPA backend selected by PyTorch.
 def get_sdpa_backend(operator_name):
     backend_operators = {
         '_scaled_dot_product_flash_attention': 'FLASH_ATTENTION',
@@ -83,7 +82,6 @@ def get_sdpa_backend(operator_name):
     return None
 
 
-# Write module-level routing and the actual PyTorch SDPA operators from the first forward.
 def write_sdpa_backend_report(model, profiler):
     output_path = os.path.abspath(args.print_sdpa_backend)
     output_dir = os.path.dirname(output_path)
@@ -317,7 +315,6 @@ def main():
             seed=args.inference_seed,
             checkpoint=args.sim_ckpt,
         )
-        # Keep the capture and its hook handles alive for the inference run.
         model._attn_npy_capture = attn_capture
     
     df = pd.read_csv(args.split, index_col='name')

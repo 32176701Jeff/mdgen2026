@@ -117,7 +117,6 @@ class MultiheadAttention(nn.Module):
 
         self.self_attention = self_attention
         self.encoder_decoder_attention = encoder_decoder_attention
-        # Runtime-only backend choice; plain attributes do not enter state_dict.
         self.use_sdpa = use_sdpa
         self.last_attention_backend = None
         self.last_sdpa_fallback_reason = None
@@ -458,7 +457,6 @@ class MultiheadAttention(nn.Module):
             sdpa_mask = None
             if key_padding_mask is not None:
                 keep_mask = ~key_padding_mask.to(device=q.device, dtype=torch.bool)
-                # A no-op mask can prevent PyTorch from selecting its best kernel.
                 if not bool(keep_mask.all().item()):
                     sdpa_mask = keep_mask[:, None, None, :]
 
@@ -472,7 +470,6 @@ class MultiheadAttention(nn.Module):
                 attn_mask=sdpa_mask,
                 dropout_p=dropout_p,
                 is_causal=False,
-                # q was already scaled above; do not apply 1/sqrt(d) twice.
                 scale=1.0,
             )
             assert list(attn.size()) == [

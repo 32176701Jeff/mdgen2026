@@ -17,7 +17,6 @@ from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 import pytorch_lightning as pl
 
 
-# Map the dispatched ATen operator to the SDPA backend selected by PyTorch.
 def get_sdpa_backend(operator_name):
     backend_operators = {
         '_scaled_dot_product_flash_attention': 'FLASH_ATTENTION',
@@ -31,7 +30,6 @@ def get_sdpa_backend(operator_name):
     return None
 
 
-# Profile only the first training forward and write the selected SDPA backend to a file.
 class SDPABackendReportCallback(pl.Callback):
     def __init__(self, output_path, use_sdpa):
         super().__init__()
@@ -146,7 +144,7 @@ class SDPABackendReportCallback(pl.Callback):
 
 
 # seed-initialization
-pl.seed_everything(args.train_seed, workers=True)  #modify-trainseed
+pl.seed_everything(args.train_seed, workers=True) 
 
 # fp32-matmul-precision
 # fp32-disable-tf32
@@ -193,7 +191,6 @@ if attn_to_npy is not None:
         seed=args.train_seed,
         checkpoint=args.ckpt,
     )
-    # Keep the capture and its hook handles alive for this trainer run.
     model._attn_npy_capture = attn_capture
 
 callbacks = [

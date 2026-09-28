@@ -25,9 +25,6 @@ if deepspeed_is_installed:
 if ds4s_is_installed:
     from deepspeed.ops.deepspeed4science import DS4Sci_EvoformerAttention
 
-# FlashAttention is optional in the baseline. Newer FlashAttention versions do
-# not expose the legacy flash_attn_unpadded_kvpacked_func API, so the missing
-# symbol must not prevent the baseline model from importing.
 fa_is_installed = False
 fa_legacy_import_error = None
 if importlib.util.find_spec("flash_attn") is not None:
