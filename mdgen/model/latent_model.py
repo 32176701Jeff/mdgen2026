@@ -41,10 +41,10 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
 
 class LatentMDGenModel(nn.Module):
-    def __init__(self, args, latent_dim, use_sdpa=False):
+    def __init__(self, args, latent_dim, use_sdpa=False):  # sdpa-route
         super().__init__()
         self.args = args
-        self.use_sdpa = use_sdpa
+        self.use_sdpa = use_sdpa  # sdpa-route
         if self.args.design:
             assert self.args.prepend_ipa
 
@@ -81,7 +81,7 @@ class LatentMDGenModel(nn.Module):
                         mha_heads=args.mha_heads,
                         dropout=args.dropout,
                         use_rotary_embeddings=not args.no_rope,
-                        use_sdpa=use_sdpa,
+                        use_sdpa=use_sdpa,  # sdpa-route
                         ipa_args=ipa_args
                     )
                     for _ in range(args.num_layers)
@@ -99,7 +99,7 @@ class LatentMDGenModel(nn.Module):
                     num_frames=args.num_frames,
                     use_rotary_embeddings=not args.no_rope,
                     use_time_attention=True,
-                    use_sdpa=use_sdpa,
+                    use_sdpa=use_sdpa,  # sdpa-route
                     ipa_args=ipa_args if args.interleave_ipa else None,
                 )
                 for _ in range(args.num_layers)
@@ -175,7 +175,6 @@ class LatentMDGenModel(nn.Module):
             nn.init.constant_(self.emb_to_latent.linear.weight, 0)
             nn.init.constant_(self.emb_to_latent.linear.bias, 0)
 
-    # position-id-model-routing:start
     def run_ipa(
             self,
             t,
@@ -184,7 +183,7 @@ class LatentMDGenModel(nn.Module):
             end_frames,
             aatype,
             x_d=None,
-            position_ids=None,
+            position_ids=None,  # position-id-model-routing
     ):
         if self.args.sim_condition or self.args.mpnn:
             B, L = mask.shape
@@ -196,7 +195,7 @@ class LatentMDGenModel(nn.Module):
             for layer in self.ipa_layers:
                 x = layer(
                     x, t, mask, frames=start_frames,
-                    position_ids=position_ids,
+                    position_ids=position_ids,  # position-id-model-routing
                 )
         elif self.args.tps_condition or self.args.inpainting or self.args.dynamic_mpnn:
             x_f = start_frames.invert().compose(end_frames).to_tensor_7()
@@ -212,11 +211,11 @@ class LatentMDGenModel(nn.Module):
             for layer in self.ipa_layers:
                 x_r = layer(
                     x_r, t, mask, frames=start_frames,
-                    position_ids=position_ids,
+                    position_ids=position_ids,  # position-id-model-routing
                 )
                 x_f = layer(
                     x_f, t, mask, frames=end_frames,
-                    position_ids=position_ids,
+                    position_ids=position_ids,  # position-id-model-routing
                 )
             x = (x_r + x_f)
 
@@ -226,7 +225,7 @@ class LatentMDGenModel(nn.Module):
     def forward(self, x, t, mask,
                 start_frames=None, end_frames=None,
                 x_cond=None, x_cond_mask=None,
-                aatype=None, position_ids=None
+                aatype=None, position_ids=None  # position-id-model-routing
                 ):
         if self.args.dynamic_mpnn:
             x = x[:, [0, -1]]
@@ -259,13 +258,13 @@ class LatentMDGenModel(nn.Module):
         if self.args.prepend_ipa:  # IPA doesn't need checkpointing
             x = x + self.run_ipa(
                 t[:, 0], mask[:, 0], start_frames, end_frames, aatype,
-                x_d=x_d, position_ids=position_ids,
+                x_d=x_d, position_ids=position_ids,  # position-id-model-routing
             )[:, None]
 
         for layer_idx, layer in enumerate(self.layers):
             x = grad_checkpoint(
                 layer,
-                (x, t, mask, start_frames, position_ids),
+                (x, t, mask, start_frames, position_ids),  # position-id-model-routing
                 self.args.grad_checkpointing,
             )
 
@@ -284,12 +283,12 @@ class LatentMDGenModel(nn.Module):
     def forward_inference(self, x, t, mask,
                           start_frames=None, end_frames=None,
                           x_cond=None, x_cond_mask=None,
-                          aatype=None, position_ids=None
+                          aatype=None, position_ids=None  # position-id-model-routing
                           ):
         if not self.args.design or self.args.dynamic_mpnn or self.args.mpnn:
             return self.forward(
                 x, t, mask, start_frames, end_frames, x_cond, x_cond_mask,
-                aatype, position_ids
+                aatype, position_ids  # position-id-model-routing
             )
         else:
             x_discrete = x[:, :, :, -20:]
@@ -306,7 +305,7 @@ class LatentMDGenModel(nn.Module):
                 # x_discrete = simplex_proj(x_discrete)
             latent = self.forward(
                 x, t, mask, start_frames, end_frames, x_cond, x_cond_mask,
-                aatype, position_ids
+                aatype, position_ids  # position-id-model-routing
             )
             latent_continuous = latent[:, :, :, :-20]
             logits = latent[:, :, :, -20:]
@@ -342,7 +341,6 @@ class LatentMDGenModel(nn.Module):
             flow = (flow_probs.unsqueeze(-2) * cond_flows).sum(-1) * dalpha_dt
 
             return torch.cat([latent_continuous, flow], -1)
-    # position-id-model-routing:end
 
 
 class AttentionWithRoPE(nn.Module):
@@ -350,15 +348,15 @@ class AttentionWithRoPE(nn.Module):
         super().__init__()
         self.attn = MultiheadAttention(*args, **kwargs)
 
-    def forward(self, x, mask, position_ids=None):
+    def forward(self, x, mask, position_ids=None):  # position-id-model-routing
         x = x.transpose(0, 1)
         x, _ = self.attn(
             query=x,
             key=x,
             value=x,
             key_padding_mask=1 - mask,
-            need_weights=False,
-            position_ids=position_ids,
+            need_weights=False,  # sdpa-route
+            position_ids=position_ids,  # position-id-model-routing
         )
         x = x.transpose(0, 1)
         return x
@@ -368,23 +366,23 @@ class IPALayer(nn.Module):
     """Transformer layer block."""
 
     def __init__(self, embed_dim, ffn_embed_dim, mha_heads, dropout=0.0,
-                 use_rotary_embeddings=False, use_sdpa=False, ipa_args=None):
+                 use_rotary_embeddings=False, use_sdpa=False, ipa_args=None):  # sdpa-route
         super().__init__()
         self.embed_dim = embed_dim
         self.ffn_embed_dim = ffn_embed_dim
         self.mha_heads = mha_heads
         self.inf = 1e5
         self.use_rotary_embeddings = use_rotary_embeddings
-        self.use_sdpa = use_sdpa
+        self.use_sdpa = use_sdpa  # sdpa-route
         self._init_submodules(
             add_bias_kv=True,
             dropout=dropout,
-            use_sdpa=use_sdpa,
+            use_sdpa=use_sdpa,  # sdpa-route
             ipa_args=ipa_args,
         )
 
     def _init_submodules(
-        self, add_bias_kv=False, dropout=0.0, use_sdpa=False, ipa_args=None
+        self, add_bias_kv=False, dropout=0.0, use_sdpa=False, ipa_args=None  # sdpa-route
     ):
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
@@ -400,7 +398,7 @@ class IPALayer(nn.Module):
             add_bias_kv=add_bias_kv,
             dropout=dropout,
             use_rotary_embeddings=self.use_rotary_embeddings,
-            use_sdpa=use_sdpa,
+            use_sdpa=use_sdpa,  # sdpa-route
         )
 
         self.mha_layer_norm = nn.LayerNorm(self.embed_dim, elementwise_affine=False, eps=1e-6)
@@ -410,14 +408,14 @@ class IPALayer(nn.Module):
 
         self.final_layer_norm = nn.LayerNorm(self.embed_dim, elementwise_affine=False, eps=1e-6)
 
-    def forward(self, x, t, mask=None, frames=None, position_ids=None):
+    def forward(self, x, t, mask=None, frames=None, position_ids=None):  # position-id-model-routing
         shift_msa_l, scale_msa_l, gate_msa_l, \
             shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(t).chunk(6, dim=-1)
         x = x + self.ipa(self.ipa_norm(x), frames, frame_mask=mask)
 
         residual = x
         x = modulate(self.mha_layer_norm(x), shift_msa_l, scale_msa_l)
-        x = self.mha_l(x, mask=mask, position_ids=position_ids)
+        x = self.mha_l(x, mask=mask, position_ids=position_ids)  # position-id-model-routing
         x = residual + gate_msa_l.unsqueeze(1) * x
 
         residual = x
@@ -433,7 +431,7 @@ class LatentMDGenLayer(nn.Module):
 
     def __init__(self, embed_dim, ffn_embed_dim, mha_heads, dropout=0.0, num_frames=50, hyena=False,
                  use_rotary_embeddings=False, use_time_attention=True,
-                 use_sdpa=False, ipa_args=None):
+                 use_sdpa=False, ipa_args=None):  # sdpa-route
         super().__init__()
         self.embed_dim = embed_dim
         self.num_frames = num_frames
@@ -443,16 +441,16 @@ class LatentMDGenLayer(nn.Module):
         self.inf = 1e5
         self.use_time_attention = use_time_attention
         self.use_rotary_embeddings = use_rotary_embeddings
-        self.use_sdpa = use_sdpa
+        self.use_sdpa = use_sdpa  # sdpa-route
         self._init_submodules(
             add_bias_kv=True,
             dropout=dropout,
-            use_sdpa=use_sdpa,
+            use_sdpa=use_sdpa,  # sdpa-route
             ipa_args=ipa_args,
         )
 
     def _init_submodules(
-        self, add_bias_kv=False, dropout=0.0, use_sdpa=False, ipa_args=None
+        self, add_bias_kv=False, dropout=0.0, use_sdpa=False, ipa_args=None  # sdpa-route
     ):
 
         self.adaLN_modulation = nn.Sequential(
@@ -479,7 +477,7 @@ class LatentMDGenLayer(nn.Module):
                 add_bias_kv=add_bias_kv,
                 dropout=dropout,
                 use_rotary_embeddings=self.use_rotary_embeddings,
-                use_sdpa=use_sdpa,
+                use_sdpa=use_sdpa,  # sdpa-route
             )
 
         self.mha_l = AttentionWithRoPE(
@@ -488,7 +486,7 @@ class LatentMDGenLayer(nn.Module):
             add_bias_kv=add_bias_kv,
             dropout=dropout,
             use_rotary_embeddings=self.use_rotary_embeddings,
-            use_sdpa=use_sdpa,
+            use_sdpa=use_sdpa,  # sdpa-route
         )
 
         self.mha_layer_norm = nn.LayerNorm(self.embed_dim, elementwise_affine=False, eps=1e-6)
@@ -498,7 +496,7 @@ class LatentMDGenLayer(nn.Module):
 
         self.final_layer_norm = nn.LayerNorm(self.embed_dim, elementwise_affine=False, eps=1e-6)
 
-    def forward(self, x, t, mask=None, frames=None, position_ids=None):
+    def forward(self, x, t, mask=None, frames=None, position_ids=None):  # position-id-model-routing
         B, T, L, C = x.shape
 
         # position-id-residue-layout:start
@@ -514,6 +512,7 @@ class LatentMDGenLayer(nn.Module):
                 .expand(B, T, L)
                 .reshape(B * T, L)
             )
+        # position-id-residue-layout:end
 
         shift_msa_l, scale_msa_l, gate_msa_l, \
             shift_msa_t, scale_msa_t, gate_msa_t, \
@@ -527,9 +526,8 @@ class LatentMDGenLayer(nn.Module):
         x = self.mha_l(
             x.reshape(B * T, L, C),
             mask=mask.reshape(B * T, L),  # [:,None].expand(-1, T, -1).reshape(B * T, L)
-            position_ids=residue_position_ids,
+            position_ids=residue_position_ids,  # position-id-residue-layout
         ).reshape(B, T, L, C)
-        # position-id-residue-layout:end
         x = residual + gate_msa_l.unsqueeze(1) * x
 
         residual = x
@@ -540,12 +538,10 @@ class LatentMDGenLayer(nn.Module):
                 x.transpose(1, 2).reshape(B * L, T, C)
             ).reshape(B, L, T, C).transpose(1, 2)
         else:
-            # sdpa-time-axis-mask:start
             x = self.mha_t(
                 x.transpose(1, 2).reshape(B * L, T, C),
-                mask=mask.transpose(1, 2).reshape(B * L, T)
+                mask=mask.transpose(1, 2).reshape(B * L, T)  # sdpa-time-axis-mask
             ).reshape(B, L, T, C).transpose(1, 2)
-            # sdpa-time-axis-mask:end
         x = residual + gate_msa_t.unsqueeze(1) * x
 
         residual = x

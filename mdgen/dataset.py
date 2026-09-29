@@ -1,4 +1,4 @@
-import json
+import json  # position-id-dataset
 import torch
 from .rigid_utils import Rigid
 from .residue_constants import restype_order
@@ -30,11 +30,13 @@ class MDGenDataset(torch.utils.data.Dataset):
                 position_ids = np.asarray(json.loads(self.df.position_ids[name]), dtype=np.int64)
             else:
                 position_ids = np.arange(len(seqres), dtype=np.int64)
+            # position-id-dataset:end
         else:
             name = self.args.overfit_peptide
             seqres = name
-            position_ids = np.arange(len(seqres), dtype=np.int64)
+            position_ids = np.arange(len(seqres), dtype=np.int64)  # position-id-dataset
 
+        # position-id-dataset:start
         if position_ids.ndim != 1 or len(position_ids) != len(seqres):
             raise ValueError(
                 f'{name}: seqres length {len(seqres)} does not match '
@@ -51,6 +53,7 @@ class MDGenDataset(torch.utils.data.Dataset):
         if self.args.frame_interval:
             arr = arr[::self.args.frame_interval]
         
+        # data-preprocess-fixes:start
         available_frames = arr.shape[0]
         requested_frames = self.args.num_frames
         if available_frames < requested_frames:
@@ -65,8 +68,9 @@ class MDGenDataset(torch.utils.data.Dataset):
         else:
             frame_start = np.random.randint(0, max_start + 1)
         end = frame_start + self.args.num_frames
+        # data-preprocess-fixes:end
         # arr = np.copy(arr[frame_start:end]) * 10 # convert to angstroms
-        arr = np.copy(arr[frame_start:end]).astype(np.float32) # / 10.0 # convert to nm
+        arr = np.copy(arr[frame_start:end]).astype(np.float32) # / 10.0 # convert to nm  # fp32-data-pipeline
         if self.args.copy_frames:
             arr[1:] = arr[0]
 
@@ -85,21 +89,20 @@ class MDGenDataset(torch.utils.data.Dataset):
                 'frame_start': frame_start,
                 'atom37': atom37,
                 'seqres': seqres,
-                'position_ids': position_ids,
+                'position_ids': position_ids,  # position-id-dataset
                 'mask': restype_atom37_mask[seqres], # (L,)
             }
         torsions, torsion_mask = atom37_to_torsions(atom37, aatype)
         
         torsion_mask = torsion_mask[0]
         
-        # position-id-crop-padding:start
         if self.args.atlas:
             if L > self.args.crop:
                 start = np.random.randint(0, L - self.args.crop + 1)
                 torsions = torsions[:,start:start+self.args.crop]
                 frames = frames[:,start:start+self.args.crop]
                 seqres = seqres[start:start+self.args.crop]
-                position_ids = position_ids[start:start+self.args.crop]
+                position_ids = position_ids[start:start+self.args.crop]  # position-id-crop-padding
                 mask = mask[start:start+self.args.crop]
                 torsion_mask = torsion_mask[start:start+self.args.crop]
                 
@@ -112,10 +115,9 @@ class MDGenDataset(torch.utils.data.Dataset):
                 ], 1)
                 mask = np.concatenate([mask, np.zeros(pad, dtype=np.float32)])
                 seqres = np.concatenate([seqres, np.zeros(pad, dtype=int)])
-                position_ids = np.concatenate([position_ids, np.zeros(pad, dtype=np.int64)])
+                position_ids = np.concatenate([position_ids, np.zeros(pad, dtype=np.int64)])  # position-id-crop-padding
                 torsions = torch.cat([torsions, torch.zeros((torsions.shape[0], pad, 7, 2), dtype=torch.float32)], 1)
                 torsion_mask = torch.cat([torsion_mask, torch.zeros((pad, 7), dtype=torch.float32)])
-        # position-id-crop-padding:end
 
         return {
             'name': full_name,
@@ -125,6 +127,6 @@ class MDGenDataset(torch.utils.data.Dataset):
             'trans': frames._trans,
             'rots': frames._rots._rot_mats,
             'seqres': seqres,
-            'position_ids': position_ids,
+            'position_ids': position_ids,  # position-id-dataset
             'mask': mask, # (L,)
         }

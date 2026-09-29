@@ -88,7 +88,7 @@ def batched_gather(data, inds, dim=0, no_batch_dims=0):
     ]
     remaining_dims[dim - no_batch_dims if dim >= 0 else dim] = inds
     ranges.extend(remaining_dims)
-    return data[tuple(ranges)]
+    return data[tuple(ranges)]  # runtime-compatibility
 
 # With tree_map, a poor man's JAX tree_map
 def dict_map(fn, dic, leaf_type):

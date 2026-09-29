@@ -1,4 +1,4 @@
-import argparse
+import argparse  # seed-deterministic-args
 from argparse import ArgumentParser
 import os
 
@@ -10,9 +10,9 @@ def parse_train_args():
     parser.add_argument("--ckpt", type=str, default=None)
     parser.add_argument("--validate", action='store_true', default=False)
     parser.add_argument("--num_workers", type=int, default=4)
-    # seed-deterministic-args:start
-    parser.add_argument("--train_seed", type=int, default=137)
+    parser.add_argument("--train_seed", type=int, default=137)  # seed-deterministic-args
     parser.add_argument("--model_dir",type=str,default=None,help="Directory used as MODEL_DIR",)
+    # seed-deterministic-args:start
     parser.add_argument(
         "--deterministic",
         action=argparse.BooleanOptionalAction,
@@ -103,7 +103,8 @@ def parse_train_args():
     group = parser.add_argument_group("Model settings")
     group.add_argument('--hyena', action='store_true')
     group.add_argument('--no_rope', action='store_true')
-    group.add_argument('--use_sdpa', action='store_true')
+    group.add_argument('--use_sdpa', action='store_true')  # sdpa-route
+    # sdpa-diagnostics:start
     group.add_argument(
         '--print_sdpa_backend',
         '--print_sdpa_backened',
@@ -122,6 +123,7 @@ def parse_train_args():
             'residue, frame, and prepend-IPA MHA layers as NPY files.'
         ),
     )
+    # sdpa-diagnostics:end
     group.add_argument('--dropout', type=float, default=0.0)
     group.add_argument('--scale_factor', type=float, default=1.0)
     group.add_argument('--interleave_ipa', action='store_true')

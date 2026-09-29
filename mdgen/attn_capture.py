@@ -5,6 +5,7 @@ import numpy as np
 import torch
 
 
+# sdpa-diagnostics
 class AttentionNpyCapture:
     """Capture final-layer MHA outputs from the first model evaluation."""
 

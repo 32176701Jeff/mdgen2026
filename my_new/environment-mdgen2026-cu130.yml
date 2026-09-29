@@ -1,4 +1,4 @@
-name: mdgen2026
+name: mdgen2026-cu130
 channels:
   - defaults
   - conda-forge
@@ -148,9 +148,9 @@ dependencies:
   - zlib-ng=2.3.3
   - zstd=1.5.7
   - pip:
-      - --extra-index-url=https://download.pytorch.org/whl/cu126
-      - torch==2.12.1+cu126
-      - torchvision==0.27.1+cu126
+      - --extra-index-url=https://download.pytorch.org/whl/cu130
+      - torch==2.12.1+cu130
+      - torchvision==0.27.1+cu130
       - absl-py==2.4.0
       - aiohappyeyeballs==2.6.1
       - aiohttp==3.13.2
@@ -210,5 +210,3 @@ dependencies:
       - wandb==0.23.1
       - wrapt==2.1.2
       - yarl==1.23.0
-variables:
-  LD_PRELOAD: /home/jeff/.conda/envs/mdgen2026/lib/libstdc++.so.6

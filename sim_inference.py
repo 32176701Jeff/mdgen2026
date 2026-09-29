@@ -1,5 +1,5 @@
 import argparse
-import json
+import json  # position-id-inference-input
 parser = argparse.ArgumentParser()
 parser.add_argument('--sim_ckpt', type=str, default=None, required=True)
 parser.add_argument('--data_dir', type=str, default=None, required=True)
@@ -12,9 +12,9 @@ parser.add_argument('--tps', action='store_true')
 parser.add_argument('--xtc', action='store_true')
 parser.add_argument('--out_dir', type=str, default=".")
 parser.add_argument('--split', type=str, default='splits/4AA_test.csv')
-# seed-deterministic-args:start
-parser.add_argument('--inference_seed', type=int, default=137)
-parser.add_argument('--use_sdpa', action='store_true')
+parser.add_argument('--inference_seed', type=int, default=137)  # seed-deterministic-args
+parser.add_argument('--use_sdpa', action='store_true')  # sdpa-route
+# sdpa-diagnostics:start
 parser.add_argument('--print_sdpa_backend', type=str, default=None, metavar='PATH')
 parser.add_argument(
     '--attn_to_npy',
@@ -26,6 +26,8 @@ parser.add_argument(
         'and prepend-IPA MHA layers as NPY files.'
     ),
 )
+# sdpa-diagnostics:end
+# seed-deterministic-args:start
 parser.add_argument(
     '--deterministic',
     action=argparse.BooleanOptionalAction,
@@ -47,9 +49,9 @@ if args.deterministic and args.benchmark:
 
 import os, torch, mdtraj, tqdm, time
 import numpy as np
-from pytorch_lightning import seed_everything
+from pytorch_lightning import seed_everything  # seed-initialization
 from mdgen.geometry import atom14_to_frames, atom14_to_atom37, atom37_to_torsions
-from mdgen.attn_capture import AttentionNpyCapture
+from mdgen.attn_capture import AttentionNpyCapture  # sdpa-diagnostics
 from mdgen.residue_constants import restype_order, restype_atom37_mask
 from mdgen.tensor_utils import tensor_tree_map
 from mdgen.wrapper import NewMDGenWrapper
@@ -58,7 +60,7 @@ import pandas as pd
 
 seed_everything(args.inference_seed, workers=True)  # seed-initialization
 torch.use_deterministic_algorithms(args.deterministic)  # deterministic-execution
-torch.backends.cudnn.benchmark = args.benchmark
+torch.backends.cudnn.benchmark = args.benchmark  # deterministic-benchmark-guard
 torch.set_float32_matmul_precision('highest')  # fp32-matmul-precision
 # fp32-disable-tf32:start
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -69,6 +71,7 @@ torch.backends.cudnn.allow_tf32 = False
 os.makedirs(args.out_dir, exist_ok=True)
 
 
+# sdpa-diagnostics
 def get_sdpa_backend(operator_name):
     backend_operators = {
         '_scaled_dot_product_flash_attention': 'FLASH_ATTENTION',
@@ -82,6 +85,7 @@ def get_sdpa_backend(operator_name):
     return None
 
 
+# sdpa-diagnostics
 def write_sdpa_backend_report(model, profiler):
     output_path = os.path.abspath(args.print_sdpa_backend)
     output_dir = os.path.dirname(output_path)
@@ -168,13 +172,14 @@ def write_sdpa_backend_report(model, profiler):
     print(f'SDPA backend report saved to: {output_path}')
 
 
-def get_batch(name, seqres, position_ids, num_frames):
+def get_batch(name, seqres, position_ids, num_frames):  # position-id-inference-routing
     arr = np.lib.format.open_memmap(f'{args.data_dir}/{name}{args.suffix}.npy', 'r')
 
     if not args.tps: # else keep all frames
         arr = arr[0:1]
-    arr = np.array(arr, dtype=np.float32, copy=True)
+    arr = np.array(arr, dtype=np.float32, copy=True)  # fp32-data-pipeline
 
+    # position-id-inference-routing:start
     position_ids = torch.as_tensor(position_ids, dtype=torch.long)
     if position_ids.ndim != 1 or len(position_ids) != len(seqres):
         raise ValueError(
@@ -186,6 +191,7 @@ def get_batch(name, seqres, position_ids, num_frames):
             f'{name}: NPY residue count {arr.shape[1]} does not match '
             f'CSV seqres/position_ids length {len(seqres)}'
         )
+    # position-id-inference-routing:end
 
     frames = atom14_to_frames(torch.from_numpy(arr))
     seqres = torch.tensor([restype_order[c] for c in seqres])
@@ -197,7 +203,7 @@ def get_batch(name, seqres, position_ids, num_frames):
         return {
             'atom37': atom37,
             'seqres': seqres,
-            'position_ids': position_ids,
+            'position_ids': position_ids,  # position-id-inference-routing
             'mask': restype_atom37_mask[seqres],
         }
         
@@ -208,7 +214,7 @@ def get_batch(name, seqres, position_ids, num_frames):
         'trans': frames._trans,
         'rots': frames._rots._rot_mats,
         'seqres': seqres,
-        'position_ids': position_ids,
+        'position_ids': position_ids,  # position-id-inference-routing
         'mask': mask, # (L,)
     }
 
@@ -220,7 +226,7 @@ def rollout(model, batch):
         expanded_batch = {
             'atom37': batch['atom37'].expand(-1, args.num_frames, -1, -1, -1),
             'seqres': batch['seqres'],
-            'position_ids': batch['position_ids'],
+            'position_ids': batch['position_ids'],  # position-id-inference-routing
             'mask': batch['mask'],
         }
     else:    
@@ -230,9 +236,10 @@ def rollout(model, batch):
             'trans': batch['trans'].expand(-1, args.num_frames, -1, -1),
             'rots': batch['rots'].expand(-1, args.num_frames, -1, -1, -1),
             'seqres': batch['seqres'],
-            'position_ids': batch['position_ids'],
+            'position_ids': batch['position_ids'],  # position-id-inference-routing
             'mask': batch['mask'],
         }
+    # sdpa-diagnostics:start
     should_profile = (
         args.print_sdpa_backend is not None
         and not getattr(model, '_sdpa_backend_reported', False)
@@ -247,6 +254,7 @@ def rollout(model, batch):
         write_sdpa_backend_report(model, profiler)
     else:
         atom14, _ = model.inference(expanded_batch)
+    # sdpa-diagnostics:end
     new_batch = {**batch}
 
     if args.no_frames:
@@ -267,10 +275,10 @@ def rollout(model, batch):
     return atom14, new_batch
     
     
-def do(model, name, seqres, position_ids):
+def do(model, name, seqres, position_ids):  # position-id-inference-routing
 
     item = get_batch(
-        name, seqres, position_ids, num_frames=model.args.num_frames
+        name, seqres, position_ids, num_frames=model.args.num_frames  # position-id-inference-routing
     )
     batch = next(iter(torch.utils.data.DataLoader([item])))
 
@@ -299,11 +307,12 @@ def do(model, name, seqres, position_ids):
 def main():
     model = NewMDGenWrapper.load_from_checkpoint(
         args.sim_ckpt,
-        use_sdpa=args.use_sdpa,
+        use_sdpa=args.use_sdpa,  # sdpa-route
         weights_only=False,
     )
     model.eval().float().to('cuda')  # fp32-inference-model
 
+    # sdpa-diagnostics:start
     attn_capture = None
     if args.attn_to_npy is not None:
         attn_capture = AttentionNpyCapture(
@@ -315,6 +324,7 @@ def main():
             checkpoint=args.sim_ckpt,
         )
         model._attn_npy_capture = attn_capture
+    # sdpa-diagnostics:end
     
     df = pd.read_csv(args.split, index_col='name')
     for name in df.index:
@@ -328,8 +338,8 @@ def main():
             position_ids = list(range(len(seqres)))
         # position-id-inference-input:end
         if attn_capture is not None:
-            attn_capture.set_sample_name(name)
-        do(model, name, seqres, position_ids)
+            attn_capture.set_sample_name(name)  # sdpa-diagnostics
+        do(model, name, seqres, position_ids)  # position-id-inference-routing
         
 
 main()

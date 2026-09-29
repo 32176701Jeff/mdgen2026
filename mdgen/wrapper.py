@@ -173,9 +173,9 @@ class Wrapper(pl.LightningModule):
 
 
 class NewMDGenWrapper(Wrapper):
-    def __init__(self, args, use_sdpa=False):
+    def __init__(self, args, use_sdpa=False):  # sdpa-route
         super().__init__(args)
-        self.use_sdpa = use_sdpa
+        self.use_sdpa = use_sdpa  # sdpa-route
         for key in [
             'inpainting',
             'no_torsion',
@@ -204,7 +204,7 @@ class NewMDGenWrapper(Wrapper):
         self.model = LatentMDGenModel(
             args,
             latent_dim,
-            use_sdpa=use_sdpa,
+            use_sdpa=use_sdpa,  # sdpa-route
         )
 
         self.transport = create_transport(

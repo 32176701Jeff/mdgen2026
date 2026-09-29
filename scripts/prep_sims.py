@@ -2,7 +2,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--split', type=str, default='splits/atlas.csv')
-parser.add_argument('--atlas_dir', type=str, default='/data/cb/scratch/datasets/atlas')
+parser.add_argument('--atlas_dir', type=str, default='/data/cb/scratch/datasets/atlas')  # data-preprocess-fixes
 parser.add_argument('--outdir', type=str, default='./data_atlas')
 parser.add_argument('--num_workers', type=int, default=1)
 parser.add_argument('--suffix', type=str, default='')
@@ -52,7 +52,7 @@ def main():
 
 
 def traj_to_atom14(traj):
-    arr = np.zeros((traj.n_frames, traj.n_residues, 14, 3), dtype=np.float32)
+    arr = np.zeros((traj.n_frames, traj.n_residues, 14, 3), dtype=np.float32)  # fp32-data-pipeline
     for i, resi in enumerate(traj.top.residues):
         for at in resi.atoms:
             if at.name not in rc.restype_name_to_atom14_names[resi.name]:

@@ -98,7 +98,7 @@ class MultiheadAttention(nn.Module):
         self_attention: bool = False,
         encoder_decoder_attention: bool = False,
         use_rotary_embeddings: bool = False,
-        use_sdpa: bool = False,
+        use_sdpa: bool = False,  # sdpa-route
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -117,9 +117,11 @@ class MultiheadAttention(nn.Module):
 
         self.self_attention = self_attention
         self.encoder_decoder_attention = encoder_decoder_attention
-        self.use_sdpa = use_sdpa
+        self.use_sdpa = use_sdpa  # sdpa-route
+        # sdpa-diagnostics:start
         self.last_attention_backend = None
         self.last_sdpa_fallback_reason = None
+        # sdpa-diagnostics:end
 
         assert not self.self_attention or self.qkv_same_dim, (
             "Self-attention requires query, key and " "value to be of the same size"
@@ -144,7 +146,7 @@ class MultiheadAttention(nn.Module):
         self.onnx_trace = False
         self.rot_emb = None
         if use_rotary_embeddings:
-            self.rot_emb = RotaryEmbeddingWithPositionIds(dim=self.head_dim)
+            self.rot_emb = RotaryEmbeddingWithPositionIds(dim=self.head_dim)  # position-id-rope-interface
 
         self.enable_torch_version = False
         if hasattr(F, "multi_head_attention_forward"):
@@ -155,6 +157,7 @@ class MultiheadAttention(nn.Module):
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
 
+    # sdpa-route
     def _sdpa_fallback_reason(
         self,
         query: Tensor,
@@ -228,7 +231,7 @@ class MultiheadAttention(nn.Module):
         attn_mask: Optional[Tensor] = None,
         before_softmax: bool = False,
         need_head_weights: bool = False,
-        position_ids: Optional[Tensor] = None,
+        position_ids: Optional[Tensor] = None,  # position-id-rope-interface
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
 
@@ -250,6 +253,7 @@ class MultiheadAttention(nn.Module):
         if need_head_weights:
             need_weights = True
 
+        # sdpa-route:start
         sdpa_fallback_reason = None
         use_sdpa_for_call = False
         if self.use_sdpa:
@@ -268,6 +272,7 @@ class MultiheadAttention(nn.Module):
             self.last_sdpa_fallback_reason = sdpa_fallback_reason
         else:
             self.last_sdpa_fallback_reason = None
+        # sdpa-route:end
 
         tgt_len, bsz, embed_dim = query.size()
         assert embed_dim == self.embed_dim
@@ -279,14 +284,14 @@ class MultiheadAttention(nn.Module):
             and not self.onnx_trace
             and incremental_state is None
             and not static_kv
-            and not self.use_sdpa
+            and not self.use_sdpa  # sdpa-route
             # A workaround for quantization to work. Otherwise JIT compilation
             # treats bias in linear module as method.
             and not torch.jit.is_scripting()
             and not need_head_weights
         ):
             assert key is not None and value is not None
-            self.last_attention_backend = "torch_mha"
+            self.last_attention_backend = "torch_mha"  # sdpa-diagnostics
             return F.multi_head_attention_forward(
                 query,
                 key,
@@ -342,8 +347,7 @@ class MultiheadAttention(nn.Module):
             v = self.v_proj(value)
         q *= self.scaling
 
-        # sdpa-bias-kv:start
-        if self.bias_k is not None:
+        if self.bias_k is not None:  # sdpa-bias-kv
             assert self.bias_v is not None
             k = torch.cat([k, self.bias_k.repeat(1, bsz, 1)])
             v = torch.cat([v, self.bias_v.repeat(1, bsz, 1)])
@@ -359,8 +363,6 @@ class MultiheadAttention(nn.Module):
                     ],
                     dim=1,
                 )
-        # sdpa-bias-kv:end
-
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
         if k is not None:
             k = k.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
@@ -436,8 +438,9 @@ class MultiheadAttention(nn.Module):
                 )
 
         if self.rot_emb:
-            q, k = self.rot_emb(q, k, position_ids=position_ids)
+            q, k = self.rot_emb(q, k, position_ids=position_ids)  # position-id-rope-interface
 
+        # sdpa-route:start
         if use_sdpa_for_call:
             assert k is not None and v is not None
             assert q.device == k.device == v.device
@@ -484,13 +487,14 @@ class MultiheadAttention(nn.Module):
             attn = attn.transpose(0, 1).contiguous()
             attn = self.out_proj(attn)
             # sdpa-layout-output:end
-            self.last_attention_backend = "sdpa"
-            self.last_sdpa_fallback_reason = None
+            self.last_attention_backend = "sdpa"  # sdpa-diagnostics
+            self.last_sdpa_fallback_reason = None  # sdpa-diagnostics
             return attn, None
 
-        self.last_attention_backend = "manual"
+        self.last_attention_backend = "manual"  # sdpa-diagnostics
         if self.use_sdpa:
-            self.last_sdpa_fallback_reason = sdpa_fallback_reason
+            self.last_sdpa_fallback_reason = sdpa_fallback_reason  # sdpa-diagnostics
+        # sdpa-route:end
 
         attn_weights = torch.bmm(q, k.transpose(1, 2))
         attn_weights = MultiheadAttention.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)

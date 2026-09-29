@@ -25,6 +25,7 @@ if deepspeed_is_installed:
 if ds4s_is_installed:
     from deepspeed.ops.deepspeed4science import DS4Sci_EvoformerAttention
 
+# runtime-compatibility:start
 fa_is_installed = False
 fa_legacy_import_error = None
 if importlib.util.find_spec("flash_attn") is not None:
@@ -38,6 +39,7 @@ if importlib.util.find_spec("flash_attn") is not None:
         unpad_input = None
         flash_attn_unpadded_kvpacked_func = None
         fa_legacy_import_error = repr(exc)
+# runtime-compatibility:end
 
 import torch
 import torch.nn as nn
@@ -776,10 +778,12 @@ def _lma(
 @torch.jit.ignore
 def _flash_attn(q, k, v, kv_mask):
     if not fa_is_installed:
+        # runtime-compatibility:start
         raise ValueError(
             "_flash_attn requires the legacy FlashAttention API: "
             f"{fa_legacy_import_error or 'flash_attn is not installed'}"
         )
+        # runtime-compatibility:end
    
     batch_dims = q.shape[:-3]
     no_heads, n, c = q.shape[-3:]

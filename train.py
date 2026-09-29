@@ -1,22 +1,23 @@
 from mdgen.parsing import parse_train_args
 args = parse_train_args()
-use_sdpa = args.use_sdpa
-print_sdpa_backend = args.print_sdpa_backend
-attn_to_npy = args.attn_to_npy
-delattr(args, 'use_sdpa')
-delattr(args, 'print_sdpa_backend')
-delattr(args, 'attn_to_npy')
+use_sdpa = args.use_sdpa  # sdpa-route
+print_sdpa_backend = args.print_sdpa_backend  # sdpa-diagnostics
+attn_to_npy = args.attn_to_npy  # sdpa-diagnostics
+delattr(args, 'use_sdpa')  # sdpa-route
+delattr(args, 'print_sdpa_backend')  # sdpa-diagnostics
+delattr(args, 'attn_to_npy')  # sdpa-diagnostics
 from mdgen.logger import get_logger
 logger = get_logger(__name__)
 
 import torch, os, wandb
 from mdgen.dataset import MDGenDataset
-from mdgen.attn_capture import AttentionNpyCapture
+from mdgen.attn_capture import AttentionNpyCapture  # sdpa-diagnostics
 from mdgen.wrapper import NewMDGenWrapper
 from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 import pytorch_lightning as pl
 
 
+# sdpa-diagnostics
 def get_sdpa_backend(operator_name):
     backend_operators = {
         '_scaled_dot_product_flash_attention': 'FLASH_ATTENTION',
@@ -30,6 +31,7 @@ def get_sdpa_backend(operator_name):
     return None
 
 
+# sdpa-diagnostics
 class SDPABackendReportCallback(pl.Callback):
     def __init__(self, output_path, use_sdpa):
         super().__init__()
@@ -180,7 +182,8 @@ val_loader = torch.utils.data.DataLoader(
     batch_size=args.batch_size,
     num_workers=args.num_workers,
 )
-model = NewMDGenWrapper(args, use_sdpa=use_sdpa)
+model = NewMDGenWrapper(args, use_sdpa=use_sdpa)  # sdpa-route
+# sdpa-diagnostics:start
 if attn_to_npy is not None:
     attn_capture = AttentionNpyCapture(
         model,
@@ -191,7 +194,9 @@ if attn_to_npy is not None:
         checkpoint=args.ckpt,
     )
     model._attn_npy_capture = attn_capture
+# sdpa-diagnostics:end
 
+# sdpa-diagnostics:start
 callbacks = [
     ModelCheckpoint(
         dirpath=os.environ["MODEL_DIR"],
@@ -202,13 +207,12 @@ callbacks = [
 ]
 if print_sdpa_backend is not None:
     callbacks.append(SDPABackendReportCallback(print_sdpa_backend, use_sdpa))
+# sdpa-diagnostics:end
 
 trainer = pl.Trainer(
     accelerator="gpu" if torch.cuda.is_available() else 'auto',
-    # deterministic-execution:start
-    deterministic=args.deterministic,
-    benchmark=args.benchmark,
-    # deterministic-execution:end
+    deterministic=args.deterministic,  # deterministic-execution
+    benchmark=args.benchmark,  # deterministic-benchmark-guard
     max_epochs=args.epochs,
     limit_train_batches=args.train_batches or 1.0,
     limit_val_batches=0.0 if args.no_validate else (args.val_batches or 1.0),
