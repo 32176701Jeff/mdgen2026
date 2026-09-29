@@ -434,18 +434,19 @@ atlas.ckpt在https://huggingface.co/bjing-mit/mdgen下載 並存入./ckpt中
 #### making csv
 ```
 python scripts/prep-protein-csv.py \
-  --input_dir data/pdbxtc \
-  --output_csv data/proteins-mdgen2026.csv
+  --input_dir data-piezo/pdbxtc \
+  --output_csv data-piezo/proteins-mdgen2026.csv
 ```
 
 #### making npy
 ```
+export PYTHONPATH="/mnt/hdd/jeff/mdgen-piezo/model/mdgen2026"
 python scripts/prep_sims.py \
-  --split data/proteins-mdgen2026.csv \
-  --atlas_dir data/pdbxtc \
-  --outdir data/npy \
+  --split data-piezo/proteins-mdgen2026.csv \
+  --atlas_dir data-piezo/pdbxtc \
+  --outdir data-piezo/npy \
   --num_workers 4 \
-  --stride 40 \
+  --stride 1 \
   --atlas
 ```
 
@@ -573,6 +574,7 @@ python train.py \
   --model_dir ckpt \
   --peak_memory my_new/peak_memory/manual.json
 ```
+
 sdpa
 ```
 python train.py \
@@ -593,6 +595,7 @@ python train.py \
   --use_sdpa \
   --peak_memory my_new/peak_memory/sdpa.json
 ```
+
 ## A3－4090 實跑
 
 origin
@@ -615,6 +618,7 @@ python train.py \
   --model_dir ckpt \
   --execution_time my_new/execution_time/manual.json
 ```
+
 sdpa
 ```
 python train.py \
@@ -637,3 +641,17 @@ python train.py \
   --execution_time my_new/execution_time/sdpa.json
 ```
 ## A4-L_scaling 曲線
+```
+python benchmark_l_scaling.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --lengths 256 1000 2500 3000 4000 \
+  --output my_new/l_scaling/manual.json
+```
+
+```
+python benchmark_l_scaling.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --use_sdpa \
+  --lengths 256 1000 2500 3000 4000 \
+  --output my_new/l_scaling/sdpa.json
+```

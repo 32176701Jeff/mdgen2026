@@ -1,0 +1,81 @@
+SDPA backend report
+mode: training forward
+requested_attention_path: sdpa
+torch_version: 2.12.1+cu126
+cuda_wheel: 12.6
+gpu: NVIDIA GeForce RTX 4090
+lightning_precision: 32-true
+
+Enabled PyTorch SDPA backends:
+FLASH_ATTENTION: True
+EFFICIENT_ATTENTION: True
+CUDNN_ATTENTION: True
+MATH: True
+
+MDGen attention modules:
+model.ipa_layers.0.mha_l.attn: path=sdpa
+model.ipa_layers.1.mha_l.attn: path=sdpa
+model.ipa_layers.2.mha_l.attn: path=sdpa
+model.ipa_layers.3.mha_l.attn: path=sdpa
+model.ipa_layers.4.mha_l.attn: path=sdpa
+model.layers.0.mha_t.attn: path=sdpa
+model.layers.0.mha_l.attn: path=sdpa
+model.layers.1.mha_t.attn: path=sdpa
+model.layers.1.mha_l.attn: path=sdpa
+model.layers.2.mha_t.attn: path=sdpa
+model.layers.2.mha_l.attn: path=sdpa
+model.layers.3.mha_t.attn: path=sdpa
+model.layers.3.mha_l.attn: path=sdpa
+model.layers.4.mha_t.attn: path=sdpa
+model.layers.4.mha_l.attn: path=sdpa
+
+PyTorch SDPA operators observed:
+selected_backends: EFFICIENT_ATTENTION
+operator: aten::scaled_dot_product_attention
+  backend: dispatcher/unknown
+  calls: 5
+  input_shapes: [[1, 16, 256, 24], [1, 16, 257, 24], [1, 16, 257, 24], [1, 1, 1, 257], [], [], [], []]
+  self_cpu_time_total_us: 457.9860000000044
+  cpu_time_total_us: 1401.6910000000062
+  self_device_time_total_us: 0.0
+  device_time_total_us: 381.832000000024
+operator: aten::_scaled_dot_product_efficient_attention
+  backend: EFFICIENT_ATTENTION
+  calls: 5
+  input_shapes: [[1, 16, 256, 24], [1, 16, 257, 24], [1, 16, 257, 24], [1, 16, 256, 257], [], [], [], []]
+  self_cpu_time_total_us: 47.13900000002468
+  cpu_time_total_us: 569.4249999999884
+  self_device_time_total_us: 0.0
+  device_time_total_us: 330.34099999997125
+operator: aten::scaled_dot_product_attention
+  backend: dispatcher/unknown
+  calls: 5
+  input_shapes: [[250, 16, 256, 24], [250, 16, 257, 24], [250, 16, 257, 24], [250, 1, 1, 257], [], [], [], []]
+  self_cpu_time_total_us: 43.95799999992596
+  cpu_time_total_us: 610.0209999999788
+  self_device_time_total_us: 0.0
+  device_time_total_us: 17126.316000000137
+operator: aten::_scaled_dot_product_efficient_attention
+  backend: EFFICIENT_ATTENTION
+  calls: 5
+  input_shapes: [[250, 16, 256, 24], [250, 16, 257, 24], [250, 16, 257, 24], [250, 16, 256, 257], [], [], [], []]
+  self_cpu_time_total_us: 136.50800000000163
+  cpu_time_total_us: 248.97600000002421
+  self_device_time_total_us: 0.0
+  device_time_total_us: 17070.252000000008
+operator: aten::scaled_dot_product_attention
+  backend: dispatcher/unknown
+  calls: 5
+  input_shapes: [[256, 16, 250, 24], [256, 16, 251, 24], [256, 16, 251, 24], [256, 1, 1, 251], [], [], [], []]
+  self_cpu_time_total_us: 41.750000000029104
+  cpu_time_total_us: 621.7930000000051
+  self_device_time_total_us: 0.0
+  device_time_total_us: 14975.006999999721
+operator: aten::_scaled_dot_product_efficient_attention
+  backend: EFFICIENT_ATTENTION
+  calls: 5
+  input_shapes: [[256, 16, 250, 24], [256, 16, 251, 24], [256, 16, 251, 24], [256, 16, 250, 251], [], [], [], []]
+  self_cpu_time_total_us: 132.70799999992596
+  cpu_time_total_us: 260.737999999983
+  self_device_time_total_us: 0.0
+  device_time_total_us: 14920.832999999955

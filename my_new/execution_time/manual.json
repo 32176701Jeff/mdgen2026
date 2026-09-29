@@ -1,0 +1,18 @@
+{
+  "attention_path": "manual",
+  "batch_size": 1,
+  "completed_steps": 105,
+  "crop": 256,
+  "cuda_version": "12.6",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "gradient_checkpointing": true,
+  "max_seconds_per_step": 1.0021908569335938,
+  "mean_seconds_per_step": 0.8816527789306637,
+  "measured_steps": 100,
+  "median_seconds_per_step": 0.8806537475585937,
+  "min_seconds_per_step": 0.8771991577148438,
+  "num_frames": 250,
+  "precision": "32-true",
+  "torch_version": "2.12.1+cu126",
+  "warmup_steps": 5
+}

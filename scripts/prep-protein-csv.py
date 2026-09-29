@@ -118,24 +118,26 @@ def read_protein_residues(
 # position-id-csv
 def build_manifest_row(protein_name: str, pdb_path: Path) -> dict[str, str]:
     residues = read_protein_residues(pdb_path)
-    protein_chains = {record[0] for record in residues}
-    if len(protein_chains) != 1:
-        display_chains = [chain if chain else "<blank>" for chain in protein_chains]
-        raise ValueError(
-            f"Expected one protein chain in {pdb_path}, found: "
-            f"{', '.join(sorted(display_chains))}"
-        )
+    chain_residue_numbers: dict[str, list[int]] = {}
+    for chain, residue_number, _, _ in residues:
+        chain_residue_numbers.setdefault(chain, []).append(residue_number)
 
-    residue_numbers = [record[1] for record in residues]
-    for previous, current in zip(residue_numbers, residue_numbers[1:]):
-        if current <= previous:
-            raise ValueError(
-                f"Protein residue numbers must be strictly increasing in {pdb_path}; "
-                f"found {previous} followed by {current}."
-            )
+    chain_minimum_positions: dict[str, int] = {}
+    for chain, residue_numbers in chain_residue_numbers.items():
+        for previous, current in zip(residue_numbers, residue_numbers[1:]):
+            if current <= previous:
+                display_chain = chain if chain else "<blank>"
+                raise ValueError(
+                    f"Protein residue numbers must be strictly increasing within "
+                    f"chain {display_chain} in {pdb_path}; found {previous} "
+                    f"followed by {current}."
+                )
+        chain_minimum_positions[chain] = min(residue_numbers)
 
-    minimum_position = min(residue_numbers)
-    position_ids = [position - minimum_position for position in residue_numbers]
+    position_ids = [
+        residue_number - chain_minimum_positions[chain]
+        for chain, residue_number, _, _ in residues
+    ]
     seqres = "".join(AMINO_ACID_3TO1[record[3]] for record in residues)
 
     if len(seqres) != len(position_ids):

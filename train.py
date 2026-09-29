@@ -2,11 +2,16 @@ from mdgen.parsing import parse_train_args
 args = parse_train_args()
 use_sdpa = args.use_sdpa  # sdpa-route
 print_sdpa_backend = args.print_sdpa_backend  # sdpa-diagnostics
+peak_memory_path = args.peak_memory  # peak_memory
+execution_time_path = args.execution_time  # execution_time
 delattr(args, 'use_sdpa')  # sdpa-route
 delattr(args, 'print_sdpa_backend')  # sdpa-diagnostics
+delattr(args, 'peak_memory')  # peak_memory
+delattr(args, 'execution_time')  # execution_time
 from mdgen.logger import get_logger
 logger = get_logger(__name__)
 
+import json  # peak_memory
 import torch, os, wandb
 from mdgen.dataset import MDGenDataset
 from mdgen.wrapper import NewMDGenWrapper
@@ -142,6 +147,106 @@ class SDPABackendReportCallback(pl.Callback):
             handle.write('\n'.join(lines) + '\n')
 
 
+# peak_memory
+def write_peak_memory_report(
+    output_path, trainer, args, use_sdpa, oom=False, error=None
+):
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    attention_path = 'sdpa' if use_sdpa else 'manual'
+    peak_allocated = torch.cuda.max_memory_allocated()
+    peak_reserved = torch.cuda.max_memory_reserved()
+    report = {
+        'attention_path': attention_path,
+        'gpu': torch.cuda.get_device_name(0),
+        'torch_version': torch.__version__,
+        'cuda_version': torch.version.cuda,
+        'precision': args.precision,
+        'batch_size': args.batch_size,
+        'num_frames': args.num_frames,
+        'crop': args.crop,
+        'gradient_checkpointing': args.grad_checkpointing,
+        'completed_steps': trainer.global_step,
+        'oom': oom,
+        'peak_memory_allocated_bytes': peak_allocated,
+        'peak_memory_allocated_gb': peak_allocated / 1024 ** 3,
+        'peak_memory_reserved_bytes': peak_reserved,
+        'peak_memory_reserved_gb': peak_reserved / 1024 ** 3,
+    }
+    if error is not None:
+        report['error'] = str(error)
+    with open(output_path, 'w', encoding='utf-8') as handle:
+        json.dump(report, handle, indent=2, sort_keys=True)
+        handle.write('\n')
+    print(f'Peak memory report saved to: {output_path}')
+
+
+# execution_time
+class ExecutionTimeCallback(pl.Callback):
+    warmup_steps = 5
+
+    def __init__(self, output_path, args, use_sdpa):
+        super().__init__()
+        self.output_path = os.path.abspath(output_path)
+        self.args = args
+        self.use_sdpa = use_sdpa
+        self.train_batches_seen = 0
+        self.current_start_event = None
+        self.event_pairs = []
+        os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
+
+    def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
+        if self.train_batches_seen < self.warmup_steps:
+            return
+        self.current_start_event = torch.cuda.Event(enable_timing=True)
+        self.current_start_event.record()
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        if self.current_start_event is not None:
+            end_event = torch.cuda.Event(enable_timing=True)
+            end_event.record()
+            self.event_pairs.append((self.current_start_event, end_event))
+            self.current_start_event = None
+        self.train_batches_seen += 1
+
+    def on_fit_end(self, trainer, pl_module):
+        torch.cuda.synchronize()
+        step_times = [
+            start.elapsed_time(end) / 1000.0
+            for start, end in self.event_pairs
+        ]
+        report = {
+            'attention_path': 'sdpa' if self.use_sdpa else 'manual',
+            'gpu': torch.cuda.get_device_name(0),
+            'torch_version': torch.__version__,
+            'cuda_version': torch.version.cuda,
+            'precision': self.args.precision,
+            'batch_size': self.args.batch_size,
+            'num_frames': self.args.num_frames,
+            'crop': self.args.crop,
+            'gradient_checkpointing': self.args.grad_checkpointing,
+            'completed_steps': trainer.global_step,
+            'warmup_steps': min(self.warmup_steps, self.train_batches_seen),
+            'measured_steps': len(step_times),
+            'mean_seconds_per_step': (
+                sum(step_times) / len(step_times) if step_times else None
+            ),
+            'median_seconds_per_step': (
+                sorted(step_times)[len(step_times) // 2]
+                if len(step_times) % 2 == 1
+                else (
+                    sum(sorted(step_times)[len(step_times) // 2 - 1:len(step_times) // 2 + 1]) / 2
+                    if step_times else None
+                )
+            ),
+            'min_seconds_per_step': min(step_times) if step_times else None,
+            'max_seconds_per_step': max(step_times) if step_times else None,
+        }
+        with open(self.output_path, 'w', encoding='utf-8') as handle:
+            json.dump(report, handle, indent=2, sort_keys=True)
+            handle.write('\n')
+        print(f'Execution time report saved to: {self.output_path}')
+
+
 pl.seed_everything(args.train_seed, workers=True)  # seed-initialization
 
 torch.set_float32_matmul_precision('highest')  # fp32-matmul-precision
@@ -192,6 +297,12 @@ callbacks = [
 if print_sdpa_backend is not None:
     callbacks.append(SDPABackendReportCallback(print_sdpa_backend, use_sdpa))
 # sdpa-diagnostics:end
+# execution_time:start
+if execution_time_path is not None:
+    if not torch.cuda.is_available():
+        raise RuntimeError('--execution_time requires a CUDA device')
+    callbacks.append(ExecutionTimeCallback(execution_time_path, args, use_sdpa))
+# execution_time:end
 
 trainer = pl.Trainer(
     accelerator="gpu" if torch.cuda.is_available() else 'auto',
@@ -215,4 +326,31 @@ trainer = pl.Trainer(
 if args.validate:
     trainer.validate(model, val_loader, ckpt_path=args.ckpt)
 else:
-    trainer.fit(model, train_loader, val_loader, ckpt_path=args.ckpt)
+    # peak_memory:start
+    if peak_memory_path is not None:
+        if not torch.cuda.is_available():
+            raise RuntimeError('--peak_memory requires a CUDA device')
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
+    # peak_memory:end
+    # peak_memory:start
+    try:
+        trainer.fit(model, train_loader, val_loader, ckpt_path=args.ckpt)
+    except torch.cuda.OutOfMemoryError as error:
+        if peak_memory_path is not None:
+            write_peak_memory_report(
+                peak_memory_path,
+                trainer,
+                args,
+                use_sdpa,
+                oom=True,
+                error=error,
+            )
+        raise
+    else:
+        if peak_memory_path is not None:
+            torch.cuda.synchronize()
+            write_peak_memory_report(
+                peak_memory_path, trainer, args, use_sdpa, oom=False
+            )
+    # peak_memory:end

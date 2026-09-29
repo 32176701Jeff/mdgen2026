@@ -1,0 +1,272 @@
+{
+  "benchmark": "A4 L-scaling single model forward",
+  "checkpoint": "/mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/ckpt/atlas.ckpt",
+  "measurement_scope": "Full LatentMDGenModel forward in torch.inference_mode; peak includes model parameters, synthetic inputs, and forward temporaries, but excludes checkpoint-loading peak.",
+  "attention_path": "sdpa",
+  "dtype": "float32",
+  "batch_size": 1,
+  "num_frames": 250,
+  "grad_checkpointing": false,
+  "deterministic": true,
+  "cudnn_benchmark": false,
+  "seed": 137,
+  "torch_version": "2.12.1+cu126",
+  "cuda_wheel": "12.6",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "gpu_total_memory_bytes": 25252724736,
+  "lengths_requested": [
+    256,
+    1000,
+    2500,
+    3000,
+    4000
+  ],
+  "results": [
+    {
+      "length": 256,
+      "oom": false,
+      "baseline_memory_allocated_bytes": 140292608,
+      "baseline_memory_allocated_gib": 0.13065767288208008,
+      "peak_memory_allocated_bytes": 2033868800,
+      "peak_memory_allocated_gib": 1.8941879272460938,
+      "peak_memory_reserved_bytes": 2954887168,
+      "peak_memory_reserved_gib": 2.751953125,
+      "output_shape": [
+        1,
+        250,
+        256,
+        21
+      ],
+      "attention_modules": {
+        "ipa_layers.0.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "ipa_layers.1.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "ipa_layers.2.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "ipa_layers.3.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "ipa_layers.4.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.0.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.0.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.1.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.1.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.2.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.2.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.3.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.3.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.4.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.4.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        }
+      }
+    },
+    {
+      "length": 1000,
+      "oom": false,
+      "baseline_memory_allocated_bytes": 149572096,
+      "baseline_memory_allocated_gib": 0.13929986953735352,
+      "peak_memory_allocated_bytes": 7492145664,
+      "peak_memory_allocated_gib": 6.977604389190674,
+      "peak_memory_reserved_bytes": 10815012864,
+      "peak_memory_reserved_gib": 10.072265625,
+      "output_shape": [
+        1,
+        250,
+        1000,
+        21
+      ],
+      "attention_modules": {
+        "ipa_layers.0.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "ipa_layers.1.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "ipa_layers.2.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "ipa_layers.3.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "ipa_layers.4.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.0.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.0.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.1.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.1.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.2.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.2.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.3.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.3.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.4.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.4.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        }
+      }
+    },
+    {
+      "length": 2500,
+      "oom": false,
+      "baseline_memory_allocated_bytes": 151044096,
+      "baseline_memory_allocated_gib": 0.1406707763671875,
+      "peak_memory_allocated_bytes": 18507095552,
+      "peak_memory_allocated_gib": 17.23607587814331,
+      "peak_memory_reserved_bytes": 24312283136,
+      "peak_memory_reserved_gib": 22.642578125,
+      "output_shape": [
+        1,
+        250,
+        2500,
+        21
+      ],
+      "attention_modules": {
+        "ipa_layers.0.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "ipa_layers.1.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "ipa_layers.2.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "ipa_layers.3.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "ipa_layers.4.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.0.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.0.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.1.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.1.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.2.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.2.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.3.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.3.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.4.mha_t.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        },
+        "layers.4.mha_l.attn": {
+          "path": "sdpa",
+          "fallback_reason": null
+        }
+      }
+    },
+    {
+      "length": 3000,
+      "oom": true,
+      "peak_is_pre_oom_lower_bound": true,
+      "baseline_memory_allocated_bytes": 154041856,
+      "baseline_memory_allocated_gib": 0.1434626579284668,
+      "peak_memory_allocated_bytes": 22177828352,
+      "peak_memory_allocated_gib": 20.654712200164795,
+      "peak_memory_reserved_bytes": 24524095488,
+      "peak_memory_reserved_gib": 22.83984375,
+      "error": "CUDA out of memory. Tried to allocate 4.29 GiB. GPU 0 has a total capacity of 23.52 GiB of which 3.44 GiB is free. Including non-PyTorch memory, this process has 20.05 GiB memory in use. Of the allocated memory 16.36 GiB is allocated by PyTorch, and 3.24 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+    }
+  ]
+}

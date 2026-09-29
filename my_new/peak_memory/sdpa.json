@@ -1,0 +1,18 @@
+{
+  "attention_path": "sdpa",
+  "batch_size": 1,
+  "completed_steps": 1,
+  "crop": 256,
+  "cuda_version": "13.0",
+  "error": "CUDA out of memory. Tried to allocate 16.37 GiB. GPU 0 has a total capacity of 23.52 GiB of which 6.10 GiB is free. Including non-PyTorch memory, this process has 17.40 GiB memory in use. Of the allocated memory 617.99 MiB is allocated by PyTorch, and 16.26 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "gradient_checkpointing": false,
+  "num_frames": 250,
+  "oom": true,
+  "peak_memory_allocated_bytes": 21777176064,
+  "peak_memory_allocated_gb": 20.281575679779053,
+  "peak_memory_reserved_bytes": 22592618496,
+  "peak_memory_reserved_gb": 21.041015625,
+  "precision": "32-true",
+  "torch_version": "2.12.1+cu130"
+}

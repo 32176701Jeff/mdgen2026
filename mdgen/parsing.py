@@ -107,23 +107,30 @@ def parse_train_args():
     # sdpa-diagnostics:start
     group.add_argument(
         '--print_sdpa_backend',
-        '--print_sdpa_backened',
         dest='print_sdpa_backend',
         type=str,
         default=None,
         metavar='PATH',
     )
+    # sdpa-diagnostics:end
+    # peak_memory:start
     group.add_argument(
-        '--attn_to_npy',
+        '--peak_memory',
         type=str,
         default=None,
-        metavar='FOLDER_PATH',
-        help=(
-            'Save the first train/validation evaluation from the final '
-            'residue, frame, and prepend-IPA MHA layers as NPY files.'
-        ),
+        metavar='FILE_PATH',
+        help='Write peak CUDA training memory usage to this JSON file.',
     )
-    # sdpa-diagnostics:end
+    # peak_memory:end
+    # execution_time:start
+    group.add_argument(
+        '--execution_time',
+        type=str,
+        default=None,
+        metavar='FILE_PATH',
+        help='Write CUDA training step timing statistics to this JSON file.',
+    )
+    # execution_time:end
     group.add_argument('--dropout', type=float, default=0.0)
     group.add_argument('--scale_factor', type=float, default=1.0)
     group.add_argument('--interleave_ipa', action='store_true')
