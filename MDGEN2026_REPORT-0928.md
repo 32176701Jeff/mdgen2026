@@ -271,10 +271,10 @@ MDGen-2026新增以下四個檔案。此處先說明新增原因與檔案來源�
 
 | 新增檔案 | 新增原因 | 詳細說明 |
 |---|---|---|
-| `scripts/prep-protein-csv.py` | 原始MDGen沒有從PDB產生`seqres`與`position_ids` CSV的工具 | T3.4、T3.6 |
-| `mdgen/attn_capture.py` | 集中處理attention output與metadata輸出，供manual attention與SDPA進行數值比較 | T3.2、T4 |
+| `scripts/prep-protein-csv.py` | 原始MDGen沒有從PDB產生`seqres`與`position_ids` CSV的工具，所以目前只有ATLAS的csv，其他蛋白需要自己建立 | T3.4、T3.6 |
 | `scripts/analyze_ensemble.py` | 從AlphaFlow下載的evaluation檔案，用於計算ensemble的RMSD、RMSF、PCA、Wasserstein distance、contact與SASA等評估結果 | T4 |
 | `scripts/print.py` | 從AlphaFlow下載的evaluation檔案，用於彙整evaluation輸出的pickle結果並列印各項統計指標 | T4 |
+| `test_sdpa.py` | 獨立比較manual attention與SDPA在相同輸入、權重及上游gradient下的forward與backward數值 | T3.8、T4.3 |
 
 #### block_name標記規則
 
@@ -301,7 +301,6 @@ MDGen-2026新增以下四個檔案。此處先說明新增原因與檔案來源�
 #### 輸出與比較
 
 1. 使用`--print_sdpa_backend <path>`可以輸出實際使用的backend；由於profiler會影響效能，因此backend確認與正式performance測量分開執行。
-1. 使用`--attn_to_npy <folder_path>`可以輸出第一次model evaluation中最高層的residue、frame與IPA MHA結果，供manual attention與SDPA進行數值誤差比較。
 
 #### Checkpoint相容性
 
@@ -313,7 +312,6 @@ MDGen-2026新增以下四個檔案。此處先說明新增原因與檔案來源�
 |---|---|---|
 | SDPA | `--use_sdpa` | 啟用PyTorch SDPA；未提供時使用原本的manual attention。Training與inference皆支援。 |
 | SDPA | `--print_sdpa_backend <path>` | 將實際使用的SDPA backend與attention路徑輸出至指定檔案。 |
-| SDPA | `--attn_to_npy <folder_path>` | 將最高層的residue、frame與IPA MHA輸出存成NPY，供manual與SDPA數值比較。 |
 | FP32 | `--precision 32-true` | Training固定使用完整FP32；此參數原本已存在，MDGen-2026將可選值限制為`32-true`。 |
 | Deterministic | `--deterministic`／`--no-deterministic` | 控制是否要求使用deterministic演算法；預設開啟。 |
 | Deterministic | `--benchmark`／`--no-benchmark` | 控制cuDNN benchmark autotuner；預設關閉，且不能與deterministic同時開啟。 |
@@ -336,7 +334,7 @@ MDGen-2026將原本的`bmm → mask → softmax → dropout → bmm`改為`F.sca
 | Tensor layout與輸出(Q6) | 原始MHA合併batch與head維度 | SDPA前轉為`B,H,L,D`；完成後還原排列並通過原本的`out_proj` | `mdgen/model/mha.py`, `sdpa-layout-output` |
 | Time-axis mask(Q4) | `mha_t`呼叫端有傳入mask | frame-axis MHA沿用相同的SDPA與mask轉換流程 | `mdgen/model/latent_model.py`, `sdpa-time-axis-mask` |
 | SDPA route | 原始model沒有SDPA runtime開關、eligibility檢查與fallback流程 | 將`use_sdpa`傳入各attention layer；每次forward依執行條件選擇SDPA或manual attention，並記錄實際路徑與fallback原因 | `mdgen/wrapper.py`+`mdgen/model/latent_model.py`+`mdgen/model/mha.py`, `sdpa-route` |
-| SDPA diagnostics(Q6) | 原始code沒有backend確認與中間attention輸出功能 | 使用profiler輸出實際SDPA backend與module-level路徑，並保存最高層residue、frame及IPA MHA output與metadata供數值比較 | `train.py`+`sim_inference.py`+`mdgen/model/mha.py`+`mdgen/attn_capture.py`, `sdpa-diagnostics` |
+| SDPA diagnostics(Q6) | 原始code沒有backend確認功能 | 使用profiler輸出實際SDPA backend與module-level路徑 | `train.py`+`sim_inference.py`+`mdgen/model/mha.py`, `sdpa-diagnostics` |
 
 ### T3.3-FP32
 
@@ -393,6 +391,23 @@ name,seqres,position_ids
 | Data preprocess修正 | Frame window抽樣未包含最後合法位置，且`prep_sims.py`的CLI參數名稱與實際讀取欄位不一致 | 修正frame數檢查與抽樣邊界，並將ATLAS目錄參數統一為`--atlas_dir` | `mdgen/dataset.py`+`scripts/prep_sims.py`, `data-preprocess-fixes` |
 | Runtime相容性 | 新版FlashAttention可能缺少legacy API，且`batched_gather`使用list形式indexing | 對FlashAttention legacy API加入optional import guard，並將index list轉為tuple以相容新版執行環境 | `mdgen/model/primitives.py`+`mdgen/tensor_utils.py`, `runtime-compatibility` |
 
+## T3.8-test_sdpa.py
+
+`test_sdpa.py`是獨立的MHA模組級等價性測試，不執行完整training或inference，也不讀取checkpoint、CSV或trajectory NPY。測試以固定seed產生FP32 input、mask與上游gradient，建立權重完全相同的manual MHA與SDPA MHA，並在`eval()`模式下保留autograd執行forward與backward。<br>
+
+| 項目 | 測試方式 | 輸出或判準 | 檔案與block_name |
+|---|---|---|---|
+| Forward等價性 | 比較經過`out_proj`後的MHA output | `max\|manual-SDPA\| / max\|manual\| < 1e-5` | `test_sdpa.py`, `sdpa-equivalence-test` |
+| Backward等價性 | 使用相同上游gradient，比較input gradient與所有MHA parameter gradients | gradient relative error `< 1e-4` | `test_sdpa.py`, `sdpa-equivalence-test` |
+| Case覆蓋 | residue/time axis各測padding與no-padding，並使用`position_ids=None` | 四種case全數通過 | `test_sdpa.py`, `sdpa-equivalence-test` |
+| 執行路徑 | manual組必須走manual path，SDPA組必須實際走SDPA path | 若SDPA fallback至manual則測試失敗 | `test_sdpa.py`, `sdpa-equivalence-test` |
+
+執行時只需指定輸出目錄：
+```
+python test_sdpa.py --output_dir test_results/sdpa
+```
+每個case會儲存manual與SDPA的output NPY、input gradient NPY、parameter gradient NPZ及`result.json`；總結與環境資訊寫入`summary.json`。
+
 # T4-等價性測試
 
 ## T4.1-data_preprocess與執行流程
@@ -440,17 +455,17 @@ python train.py \
   --train_split data/proteins-mdgen2026.csv \
   --val_split data/proteins-mdgen2026.csv \
   --data_dir data/npy \
-  --model_dir ckpt \
+  --num_frames 250 \
   --batch_size 1 \
   --prepend_ipa \
   --crop 256 \
-  --atlas \
-  --run_name origin-mdgen \
   --val_repeat 25 \
   --epochs 10 \
+  --atlas \
   --ckpt_freq 9 \
-  --num_frames 250 \
-  --grad_checkpointing
+  --run_name origin-mdgen \2
+  --grad_checkpointing \
+  --model_dir ckpt \
 ```
 
 #### inference
@@ -460,16 +475,14 @@ python model/mdgen2026/sim_inference.py \
 --data_dir data/atlas/npy \
 --num_frames 250 \
 --num_rollouts 1 \
---suffix _R1 \
 --split data/proteins-mdgen2026.csv \
---out_dir data/inference/origin-mdgen \
---xtc
+--suffix _R1 \
+--out_dir data/inference/origin-mdgen
 ```
 
-## T4.2-測試環境
-先使用cu126的conda版本進行測試 cu130的問題會在T4.6進行說明
+## T4.2-數值等價性
 
-## T4.3-數值等價性
-## T4.4-執行時間
-## T4.5-GPU peak memory
-## T4.6-cu130 OOM觀察
+
+## T4.3-執行時間
+## T4.4-GPU peak memory
+## T4.5-cu130 OOM觀察

@@ -14,19 +14,7 @@ parser.add_argument('--out_dir', type=str, default=".")
 parser.add_argument('--split', type=str, default='splits/4AA_test.csv')
 parser.add_argument('--inference_seed', type=int, default=137)  # seed-deterministic-args
 parser.add_argument('--use_sdpa', action='store_true')  # sdpa-route
-# sdpa-diagnostics:start
-parser.add_argument('--print_sdpa_backend', type=str, default=None, metavar='PATH')
-parser.add_argument(
-    '--attn_to_npy',
-    type=str,
-    default=None,
-    metavar='FOLDER_PATH',
-    help=(
-        'Save the first inference evaluation from the final residue, frame, '
-        'and prepend-IPA MHA layers as NPY files.'
-    ),
-)
-# sdpa-diagnostics:end
+parser.add_argument('--print_sdpa_backend', type=str, default=None, metavar='PATH')  # sdpa-diagnostics
 # seed-deterministic-args:start
 parser.add_argument(
     '--deterministic',
@@ -51,7 +39,6 @@ import os, torch, mdtraj, tqdm, time
 import numpy as np
 from pytorch_lightning import seed_everything  # seed-initialization
 from mdgen.geometry import atom14_to_frames, atom14_to_atom37, atom37_to_torsions
-from mdgen.attn_capture import AttentionNpyCapture  # sdpa-diagnostics
 from mdgen.residue_constants import restype_order, restype_atom37_mask
 from mdgen.tensor_utils import tensor_tree_map
 from mdgen.wrapper import NewMDGenWrapper
@@ -311,20 +298,6 @@ def main():
         weights_only=False,
     )
     model.eval().float().to('cuda')  # fp32-inference-model
-
-    # sdpa-diagnostics:start
-    attn_capture = None
-    if args.attn_to_npy is not None:
-        attn_capture = AttentionNpyCapture(
-            model,
-            args.attn_to_npy,
-            run_mode='inference',
-            use_sdpa=args.use_sdpa,
-            seed=args.inference_seed,
-            checkpoint=args.sim_ckpt,
-        )
-        model._attn_npy_capture = attn_capture
-    # sdpa-diagnostics:end
     
     df = pd.read_csv(args.split, index_col='name')
     for name in df.index:
@@ -337,8 +310,6 @@ def main():
         else:
             position_ids = list(range(len(seqres)))
         # position-id-inference-input:end
-        if attn_capture is not None:
-            attn_capture.set_sample_name(name)  # sdpa-diagnostics
         do(model, name, seqres, position_ids)  # position-id-inference-routing
         
 
