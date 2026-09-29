@@ -221,7 +221,7 @@ trainer = pl.Trainer(
     enable_progress_bar=not args.wandb or os.getlogin() == 'hstark',
     gradient_clip_val=args.grad_clip,
     default_root_dir=os.environ["MODEL_DIR"], 
-    callbacks=callbacks,
+    callbacks=callbacks, # sdpa-diagnostics
     accumulate_grad_batches=args.accumulate_grad,
     val_check_interval=args.val_freq,
     check_val_every_n_epoch=args.val_epoch_freq,

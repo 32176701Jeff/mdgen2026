@@ -115,7 +115,7 @@ def read_protein_residues(
         raise ValueError(f"No supported protein residues found in {pdb_path}")
     return residues
 
-
+# position-id-csv
 def build_manifest_row(protein_name: str, pdb_path: Path) -> dict[str, str]:
     residues = read_protein_residues(pdb_path)
     protein_chains = {record[0] for record in residues}
@@ -134,7 +134,6 @@ def build_manifest_row(protein_name: str, pdb_path: Path) -> dict[str, str]:
                 f"found {previous} followed by {current}."
             )
 
-    # position-id-csv:start
     minimum_position = min(residue_numbers)
     position_ids = [position - minimum_position for position in residue_numbers]
     seqres = "".join(AMINO_ACID_3TO1[record[3]] for record in residues)
@@ -150,7 +149,6 @@ def build_manifest_row(protein_name: str, pdb_path: Path) -> dict[str, str]:
         "seqres": seqres,
         "position_ids": json.dumps(position_ids, separators=(",", ":")),
     }
-    # position-id-csv:end
 
 
 def main() -> None:
