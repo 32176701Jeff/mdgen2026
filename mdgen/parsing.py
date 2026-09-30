@@ -3,7 +3,7 @@ from argparse import ArgumentParser
 import os
 
 
-def parse_train_args():
+def parse_train_args(include_runtime_args=False):  # runtime-args-separation
     parser = ArgumentParser()
 
     ## Trainer settings
@@ -104,33 +104,36 @@ def parse_train_args():
     group.add_argument('--hyena', action='store_true')
     group.add_argument('--no_rope', action='store_true')
     group.add_argument('--use_sdpa', action='store_true')  # sdpa-route
-    # sdpa-diagnostics:start
-    group.add_argument(
-        '--print_sdpa_backend',
-        dest='print_sdpa_backend',
-        type=str,
-        default=None,
-        metavar='PATH',
-    )
-    # sdpa-diagnostics:end
-    # peak_memory:start
-    group.add_argument(
-        '--peak_memory',
-        type=str,
-        default=None,
-        metavar='FILE_PATH',
-        help='Write peak CUDA training memory usage to this JSON file.',
-    )
-    # peak_memory:end
-    # execution_time:start
-    group.add_argument(
-        '--execution_time',
-        type=str,
-        default=None,
-        metavar='FILE_PATH',
-        help='Write CUDA training step timing statistics to this JSON file.',
-    )
-    # execution_time:end
+    # runtime-args-separation:start
+    if include_runtime_args:
+        # sdpa-diagnostics:start
+        group.add_argument(
+            '--print_sdpa_backend',
+            dest='print_sdpa_backend',
+            type=str,
+            default=None,
+            metavar='PATH',
+        )
+        # sdpa-diagnostics:end
+        # peak_memory:start
+        group.add_argument(
+            '--peak_memory',
+            type=str,
+            default=None,
+            metavar='FILE_PATH',
+            help='Write peak CUDA training memory usage to this JSON file.',
+        )
+        # peak_memory:end
+        # execution_time:start
+        group.add_argument(
+            '--execution_time',
+            type=str,
+            default=None,
+            metavar='FILE_PATH',
+            help='Write CUDA training step timing statistics to this JSON file.',
+        )
+        # execution_time:end
+    # runtime-args-separation:end
     group.add_argument('--dropout', type=float, default=0.0)
     group.add_argument('--scale_factor', type=float, default=1.0)
     group.add_argument('--interleave_ipa', action='store_true')

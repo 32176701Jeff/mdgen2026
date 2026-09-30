@@ -376,6 +376,7 @@ MDGen-2026預設seed為137、開啟deterministic algorithms並關閉cuDNN benchm
 |---|---|---|---|
 | `mdgen/model/primitives.py`、`mdgen/tensor_utils.py`、`sim_inference.py` | `runtime-compatibility` | 對legacy FlashAttention加入optional import guard、將新版PyTorch不接受的list indexing改為tuple，並以`weights_only=False`載入舊Lightning checkpoint | PyTorch 2.x與checkpoint相容性所需 |
 | `mdgen/wrapper.py` | `checkpoint-runtime-args` | `save_hyperparameters`只保存原有`args`，避免`use_sdpa`等runtime選項成為checkpoint建構需求 | 新增runtime args後的checkpoint相容處理 |
+| `mdgen/parsing.py`、`train.py`、`train-runtime.py` | `runtime-args-separation` | 正式`train.py`只註冊一般訓練參數與`use_sdpa`；backend profiler、peak memory及execution time三個量測參數只由`train-runtime.py`註冊與使用 | 將正式訓練入口與benchmark instrumentation分離 |
 | `mdgen/dataset.py`、`scripts/prep_sims.py` | `data-preprocess-fixes` | 修正frame不足錯誤及最後合法window未被抽到；統一`atlas_dir`欄位並保留舊`--sim_dir` alias | 額外bug fix，不是SDPA主線要求 |
 | `mdgen/parsing.py` | `model-output-dir` | 支援`--model_dir`指定training輸出根目錄 | 額外便利功能；未提供時維持原路徑 |
 | `.gitignore` | `repository-artifacts` | 排除大型輸出及暫存檔 | 不影響model runtime |
@@ -614,7 +615,7 @@ python train-runtime.py \
   --run_name C2-cu126-sdpa-gc-off \
   --model_dir workdir \
   --use_sdpa \
-  --peak_memory my_new/t5/A2A3/C2-cu126-sdpa-gc-off-memory.json \
+  --peak_memory my_new/t5/C2-cu126-sdpa-gc-off-memory.json \
   --execution_time my_new/t5/A2A3/C2-cu126-sdpa-gc-off-time.json
 ```
 C3

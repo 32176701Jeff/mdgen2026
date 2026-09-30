@@ -1,5 +1,5 @@
 from mdgen.parsing import parse_train_args
-args = parse_train_args()
+args = parse_train_args(include_runtime_args=True)  # runtime-args-separation
 use_sdpa = args.use_sdpa  # sdpa-route
 print_sdpa_backend = args.print_sdpa_backend  # sdpa-diagnostics
 peak_memory_path = args.peak_memory  # peak_memory

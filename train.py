@@ -1,5 +1,5 @@
 from mdgen.parsing import parse_train_args
-args = parse_train_args()
+args = parse_train_args()  # runtime-args-separation
 use_sdpa = args.use_sdpa  # sdpa-route
 delattr(args, 'use_sdpa')  # sdpa-route
 from mdgen.logger import get_logger
