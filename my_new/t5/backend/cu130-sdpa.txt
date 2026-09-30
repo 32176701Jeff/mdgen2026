@@ -1,8 +1,8 @@
 SDPA backend report
 mode: training forward
 requested_attention_path: sdpa
-torch_version: 2.12.1+cu126
-cuda_wheel: 12.6
+torch_version: 2.12.1+cu130
+cuda_wheel: 13.0
 gpu: NVIDIA GeForce RTX 4090
 lightning_precision: 32-true
 
@@ -35,47 +35,47 @@ operator: aten::scaled_dot_product_attention
   backend: dispatcher/unknown
   calls: 5
   input_shapes: [[1, 16, 256, 24], [1, 16, 257, 24], [1, 16, 257, 24], [1, 1, 1, 257], [], [], [], []]
-  self_cpu_time_total_us: 457.9860000000044
-  cpu_time_total_us: 1401.6910000000062
+  self_cpu_time_total_us: 443.2070000000531
+  cpu_time_total_us: 1584.5550000000076
   self_device_time_total_us: 0.0
-  device_time_total_us: 381.832000000024
+  device_time_total_us: 302.6570000000356
 operator: aten::_scaled_dot_product_efficient_attention
   backend: EFFICIENT_ATTENTION
   calls: 5
   input_shapes: [[1, 16, 256, 24], [1, 16, 257, 24], [1, 16, 257, 24], [1, 16, 256, 257], [], [], [], []]
-  self_cpu_time_total_us: 47.13900000002468
-  cpu_time_total_us: 569.4249999999884
+  self_cpu_time_total_us: 45.993000000031316
+  cpu_time_total_us: 754.3730000000069
   self_device_time_total_us: 0.0
-  device_time_total_us: 330.34099999997125
+  device_time_total_us: 251.36000000001513
 operator: aten::scaled_dot_product_attention
   backend: dispatcher/unknown
   calls: 5
   input_shapes: [[250, 16, 256, 24], [250, 16, 257, 24], [250, 16, 257, 24], [250, 1, 1, 257], [], [], [], []]
-  self_cpu_time_total_us: 43.95799999992596
-  cpu_time_total_us: 610.0209999999788
+  self_cpu_time_total_us: 40.294000000081724
+  cpu_time_total_us: 520.7840000000579
   self_device_time_total_us: 0.0
-  device_time_total_us: 17126.316000000137
+  device_time_total_us: 16912.89600000014
 operator: aten::_scaled_dot_product_efficient_attention
   backend: EFFICIENT_ATTENTION
   calls: 5
   input_shapes: [[250, 16, 256, 24], [250, 16, 257, 24], [250, 16, 257, 24], [250, 16, 256, 257], [], [], [], []]
-  self_cpu_time_total_us: 136.50800000000163
-  cpu_time_total_us: 248.97600000002421
+  self_cpu_time_total_us: 34.160000000018044
+  cpu_time_total_us: 147.24499999996624
   self_device_time_total_us: 0.0
-  device_time_total_us: 17070.252000000008
+  device_time_total_us: 16856.992000000086
 operator: aten::scaled_dot_product_attention
   backend: dispatcher/unknown
   calls: 5
   input_shapes: [[256, 16, 250, 24], [256, 16, 251, 24], [256, 16, 251, 24], [256, 1, 1, 251], [], [], [], []]
-  self_cpu_time_total_us: 41.750000000029104
-  cpu_time_total_us: 621.7930000000051
+  self_cpu_time_total_us: 36.219000000011874
+  cpu_time_total_us: 541.2519999999495
   self_device_time_total_us: 0.0
-  device_time_total_us: 14975.006999999721
+  device_time_total_us: 14906.12999999983
 operator: aten::_scaled_dot_product_efficient_attention
   backend: EFFICIENT_ATTENTION
   calls: 5
   input_shapes: [[256, 16, 250, 24], [256, 16, 251, 24], [256, 16, 251, 24], [256, 16, 250, 251], [], [], [], []]
-  self_cpu_time_total_us: 132.70799999992596
-  cpu_time_total_us: 260.737999999983
+  self_cpu_time_total_us: 34.50499999997555
+  cpu_time_total_us: 167.38200000004144
   self_device_time_total_us: 0.0
-  device_time_total_us: 14920.832999999955
+  device_time_total_us: 14851.665999999881

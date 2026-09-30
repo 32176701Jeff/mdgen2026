@@ -47,7 +47,7 @@ class Wrapper(pl.LightningModule):
 
     def __init__(self, args):
         super().__init__()
-        self.save_hyperparameters("args")
+        self.save_hyperparameters("args") #checkpoint-runtime-args
         self.args = args
         self._log = defaultdict(list)
         self.last_log_time = time.time()

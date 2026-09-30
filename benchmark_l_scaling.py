@@ -36,6 +36,18 @@ def parse_args():
         help="Trajectory frames T; Atlas inference uses 250.",
     )
     parser.add_argument("--use_sdpa", action="store_true")
+    # sdpa-diagnostics:start
+    parser.add_argument(
+        "--print_sdpa_backend",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Profile one forward at the first requested length and write the "
+            "actual PyTorch SDPA backend report."
+        ),
+    )
+    # sdpa-diagnostics:end
     parser.add_argument("--seed", type=int, default=137)
     parser.add_argument(
         "--continue_after_oom",
@@ -62,6 +74,106 @@ def attention_paths(model):
                 "fallback_reason": module.last_sdpa_fallback_reason,
             }
     return paths
+
+
+# sdpa-diagnostics:start
+def get_sdpa_backend(operator_name):
+    backend_operators = {
+        "_scaled_dot_product_flash_attention": "FLASH_ATTENTION",
+        "_scaled_dot_product_efficient_attention": "EFFICIENT_ATTENTION",
+        "_scaled_dot_product_cudnn_attention": "CUDNN_ATTENTION",
+        "_scaled_dot_product_attention_math": "MATH",
+    }
+    for operator, backend in backend_operators.items():
+        if operator in operator_name:
+            return backend
+    return None
+
+
+def write_sdpa_backend_report(
+    path, model, profiler, length, num_frames, use_sdpa, device
+):
+    path = path.resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "SDPA backend report",
+        "scope: A4 single LatentMDGenModel forward",
+        f'requested_attention_path: {"sdpa" if use_sdpa else "manual"}',
+        f"batch_size: 1",
+        f"num_frames: {num_frames}",
+        f"residue_length: {length}",
+        "dtype: float32",
+        f"torch_version: {torch.__version__}",
+        f"cuda_wheel: {torch.version.cuda}",
+        f"gpu: {torch.cuda.get_device_name(device)}",
+        "",
+        "Enabled PyTorch SDPA backends:",
+    ]
+    enabled_checks = (
+        ("FLASH_ATTENTION", "flash_sdp_enabled"),
+        ("EFFICIENT_ATTENTION", "mem_efficient_sdp_enabled"),
+        ("CUDNN_ATTENTION", "cudnn_sdp_enabled"),
+        ("MATH", "math_sdp_enabled"),
+    )
+    for backend, check_name in enabled_checks:
+        check = getattr(torch.backends.cuda, check_name, None)
+        lines.append(f'{backend}: {check() if check is not None else "unknown"}')
+
+    lines.extend(["", "MDGen attention modules:"])
+    modules = attention_paths(model.model)
+    if not modules:
+        lines.append("No attention modules expose backend information.")
+    for name, details in modules.items():
+        message = f'{name}: path={details["path"] or "not_executed"}'
+        if details["fallback_reason"] is not None:
+            message += f', fallback={details["fallback_reason"]}'
+        lines.append(message)
+
+    lines.extend(["", "PyTorch SDPA operators observed:"])
+    observed_backends = set()
+    observed_operators = []
+    for event in profiler.key_averages(group_by_input_shape=True):
+        if "scaled_dot_product" not in event.key:
+            continue
+        backend = get_sdpa_backend(event.key)
+        if backend is not None:
+            observed_backends.add(backend)
+        observed_operators.append((event, backend))
+
+    if observed_backends:
+        lines.append(f'selected_backends: {", ".join(sorted(observed_backends))}')
+    else:
+        lines.append("selected_backends: none detected")
+    if not observed_operators:
+        lines.append("No scaled-dot-product attention operators were observed.")
+    for event, backend in observed_operators:
+        self_device_time = getattr(
+            event,
+            "self_device_time_total",
+            getattr(event, "self_cuda_time_total", 0.0),
+        )
+        device_time = getattr(
+            event,
+            "device_time_total",
+            getattr(event, "cuda_time_total", 0.0),
+        )
+        lines.extend(
+            [
+                f"operator: {event.key}",
+                f'  backend: {backend or "dispatcher/unknown"}',
+                f"  calls: {event.count}",
+                f"  input_shapes: {event.input_shapes}",
+                f"  self_cpu_time_total_us: {event.self_cpu_time_total}",
+                f"  cpu_time_total_us: {event.cpu_time_total}",
+                f"  self_device_time_total_us: {self_device_time}",
+                f"  device_time_total_us: {device_time}",
+            ]
+        )
+
+    with path.open("w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+    print(f"SDPA backend report saved to: {path}")
+# sdpa-diagnostics:end
 
 
 def make_forward_inputs(model, length, num_frames, device):
@@ -106,6 +218,44 @@ def make_forward_inputs(model, length, num_frames, device):
             length, dtype=torch.long, device=device
         ).unsqueeze(0),
     }
+
+
+# sdpa-diagnostics:start
+def profile_sdpa_backend(
+    model, length, num_frames, device, output_path, use_sdpa
+):
+    inputs = None
+    output = None
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.synchronize()
+    try:
+        inputs = make_forward_inputs(model, length, num_frames, device)
+        activities = [
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA,
+        ]
+        with torch.profiler.profile(
+            activities=activities, record_shapes=True
+        ) as profiler:
+            with torch.inference_mode():
+                output = model.model(**inputs)
+        torch.cuda.synchronize()
+        write_sdpa_backend_report(
+            output_path,
+            model,
+            profiler,
+            length,
+            num_frames,
+            use_sdpa,
+            device,
+        )
+    finally:
+        del output
+        del inputs
+        gc.collect()
+        torch.cuda.empty_cache()
+# sdpa-diagnostics:end
 
 
 def memory_stats():
@@ -184,6 +334,18 @@ def main():
     )
     model.eval().float().to(device)
     model.args.grad_checkpointing = False
+
+    # sdpa-diagnostics:start
+    if args.print_sdpa_backend is not None:
+        profile_sdpa_backend(
+            model,
+            args.lengths[0],
+            args.num_frames,
+            device,
+            args.print_sdpa_backend,
+            args.use_sdpa,
+        )
+    # sdpa-diagnostics:end
 
     report = {
         "benchmark": "A4 L-scaling single model forward",

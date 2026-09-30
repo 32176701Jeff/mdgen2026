@@ -263,161 +263,211 @@ if self.args.atlas:
     if L > self.args.crop:
 ```
 
-## T3-code_modification
 
-### T3.0-New files
+# T3.0 — 修改方向
 
-MDGen-2026新增以下四個檔案。此處先說明新增原因與檔案來源，實作及使用方式仍依功能放在後續對應章節。
+MDGen-2026的程式修改分成五個方向：
 
-| 新增檔案 | 新增原因 | 詳細說明 |
+| 方向 | 目的 | 主要內容 |
 |---|---|---|
-| `scripts/prep-protein-csv.py` | 原始MDGen沒有從PDB產生`seqres`與`position_ids` CSV的工具，所以目前只有ATLAS的csv，其他蛋白需要自己建立 | T3.4、T3.6 |
-| `scripts/analyze_ensemble.py` | 從AlphaFlow下載的evaluation檔案，用於計算ensemble的RMSD、RMSF、PCA、Wasserstein distance、contact與SASA等評估結果 | T4 |
-| `scripts/print.py` | 從AlphaFlow下載的evaluation檔案，用於彙整evaluation輸出的pickle結果並列印各項統計指標 | T4 |
-| `test_sdpa.py` | 獨立比較manual attention與SDPA在相同輸入、權重及上游gradient下的forward與backward數值 | T3.8、T4.3 |
+| SDPA（T3.2） | 將原本的manual attention改為PyTorch SDPA，同時保留數學語意與manual比較路徑 | SDPA routing、scaling、mask、bias K/V、dropout、tensor layout及FP32設定 |
+| Position ID（T3.3） | 先建立後續fork共用的RoPE位置介面 | `position_ids=None`介面，以及CSV、Dataset、model與inference之間的欄位傳遞 |
+| Deterministic／seed（T3.4） | 讓manual與SDPA在相同條件下比較 | Training/inference seed、deterministic algorithms及cuDNN benchmark控制 |
+| Other（T3.5） | 收納不屬於以上三類的相容性及輔助修改 | PyTorch/checkpoint相容性、資料前處理修正及model輸出目錄 |
+| Runtime驗證與new files（T3.6） | 集中介紹新增檔案，以及產生T4/T5所需證據的工具 | 實際SDPA backend、peak memory、sec/step、模組等價性、L-scaling及輔助工具 |
 
-#### block_name標記規則
+老師的規格定義功能及驗收條件，沒有指定`block_name`名稱。本報告以`block_name`標記`origin/master`之後的程式修改：(a) 完整新增function/class在定義前標記；(b) 既有function內的連續修改使用`:start`／`:end`；(c) 單行修改或argument在行尾標記；(d) start/end不跨越function或class。
 
-另外，程式碼中的修改區塊會以`# <block_name>`標記，可在對應檔案中搜尋`# <block_name>`定位實作。<br>
+## T3.1 — 新增項目
 
-`# <block_name>`的標記方式如下：
+### T3.1.1 — New files
 
-1. 完整新增 function/class：定義前使用 # block_name
-1. 既有 function 的連續多行修改：使用 # block_name:start／# block_name:end
-1. 單行修改：行尾使用 # block_name
-1. 單一新增 argument：argument 行尾使用 # block_name
-1. 不連續修改區域：分別標記，不共用一組 start/end
-1. start/end 不跨越 function 或 class
-1. 不將未修改的原始 code 包入標記範圍
-1. 只使用報告已定義的 block name
+此處只介紹新增檔案及新增原因；各檔案自己的CLI參數留在該檔案說明或`--help`中，不列入T3.1.2。
 
-### T3.1-新增args
-
-#### Runtime行為
-
-1. Training與inference分別提供SDPA開關；未使用`--use_sdpa`時走原本的manual attention，使用後才切換到SDPA。
-1. PyTorch SDPA會依照GPU、dtype、mask與tensor shape，在執行時選擇FLASH_ATTENTION、EFFICIENT_ATTENTION、CUDNN_ATTENTION或MATH backend。
-
-#### 輸出與比較
-
-1. 使用`--print_sdpa_backend <path>`可以輸出實際使用的backend；由於profiler會影響效能，因此backend確認與正式performance測量分開執行。
-1. 使用`--peak_memory <file_path>`輸出training的CUDA peak memory；使用`--execution_time <file_path>`排除前5個warm-up steps後，輸出完整training step的CUDA執行時間統計。
-
-#### Checkpoint相容性
-
-1. 以上參數都是MDGen-2026新增的runtime選項，不會寫入checkpoint；沒有提供參數時不影響原本的training或inference流程。  
-
-#### Args總覽
-
-| 類別 | Args | 功能 |
-|---|---|---|
-| SDPA | `--use_sdpa` | 啟用PyTorch SDPA；未提供時使用原本的manual attention。Training與inference皆支援。 |
-| SDPA | `--print_sdpa_backend <path>` | 將實際使用的SDPA backend與attention路徑輸出至指定檔案。 |
-| FP32 | `--precision 32-true` | Training固定使用完整FP32；此參數原本已存在，MDGen-2026將可選值限制為`32-true`。 |
-| Deterministic | `--deterministic`／`--no-deterministic` | 控制是否要求使用deterministic演算法；預設開啟。 |
-| Deterministic | `--benchmark`／`--no-benchmark` | 控制cuDNN benchmark autotuner；預設關閉，且不能與deterministic同時開啟。 |
-| Seed | `--train_seed <int>` | 設定training使用的seed，預設為137。 |
-| Seed | `--inference_seed <int>` | 設定inference使用的seed，預設為137。 |
-| Benchmark | `--peak_memory <file_path>` | 將training的CUDA peak allocated／reserved memory寫入指定JSON。 |
-| Benchmark | `--execution_time <file_path>` | 排除前5個warm-up steps，以CUDA Event量測完整training step並將統計結果寫入指定JSON。 |
-| 其他 | `--model_dir <path>` | 指定training輸出目錄；未提供時使用原本的`workdir/<run_name>`。 |
-
-
-
-### T3.2－SDPA實作與T2問題處理
-
-MDGen-2026將原本的`bmm → mask → softmax → dropout → bmm`改為`F.scaled_dot_product_attention`，其餘Q/K/V projection、RoPE、bias K/V與output projection維持原本語意。  
-
-| 項目 | T2確認結果 | MDGen-2026處理方式 | 修改檔案,block_name |
+| 新增檔案 | 方向（T3.x） | 新增原因 | 類別 |
 |---|---|---|---|
-| Scaling(Q1) | 原始code已執行`q *= self.scaling` | 保留原始scaling，呼叫SDPA時設定`scale=1.0`，避免重複scaling | `mdgen/model/mha.py`, `sdpa-scaling` |
-| Mask極性與fast path(Q2) | `key_padding_mask=True`代表遮蔽，但SDPA中`True`代表保留 | 使用`~key_padding_mask`反轉極性；全部為True時改傳`None` | `mdgen/model/mha.py`, `sdpa-mask` |
-| bias K/V(Q3) | `add_bias_kv=True`，bias K/V實際有使用 | 保留原本K/V append與mask延長流程，再將處理完成的K/V交給SDPA | `mdgen/model/mha.py`, `sdpa-bias-kv` |
-| Dropout(Q5) | manual attention只在training啟用dropout | SDPA使用`self.dropout if self.training else 0.0` | `mdgen/model/mha.py`, `sdpa-dropout` |
-| Tensor layout與輸出(Q6) | 原始MHA合併batch與head維度 | SDPA前轉為`B,H,L,D`；完成後還原排列並通過原本的`out_proj` | `mdgen/model/mha.py`, `sdpa-layout-output` |
-| Time-axis mask(Q4) | `mha_t`呼叫端有傳入mask | frame-axis MHA沿用相同的SDPA與mask轉換流程 | `mdgen/model/latent_model.py`, `sdpa-time-axis-mask` |
-| SDPA route | 原始model沒有SDPA runtime開關、eligibility檢查與fallback流程 | 將`use_sdpa`傳入各attention layer；每次forward依執行條件選擇SDPA或manual attention，並記錄實際路徑與fallback原因 | `mdgen/wrapper.py`+`mdgen/model/latent_model.py`+`mdgen/model/mha.py`, `sdpa-route` |
-| SDPA diagnostics(Q6) | 原始code沒有backend確認功能 | 使用profiler輸出實際SDPA backend與module-level路徑 | `train.py`+`sim_inference.py`+`mdgen/model/mha.py`, `sdpa-diagnostics` |
+| `scripts/prep-protein-csv.py` | Position ID（T3.3） | 原始MDGen沒有從PDB建立`seqres`與`position_ids` CSV的工具 | Position ID輔助 |
+| `train-runtime.py` | Runtime驗證與new files（T3.6） | 將本次training backend、peak memory及sec/step量測與下一階段正式`train.py`隔離 | Runtime驗證 |
+| `test_sdpa.py` | Runtime驗證與new files（T3.6） | 原始repository沒有manual與SDPA的MHA forward/backward等價性測試 | Runtime驗證 |
+| `benchmark_l_scaling.py` | Runtime驗證與new files（T3.6） | 原始repository沒有逐L量測單次model forward峰值、OOM及實際SDPA backend的工具 | Runtime驗證 |
+| `scripts/analyze_ensemble.py` | Runtime驗證與new files（T3.6） | 從AlphaFlow取得的ensemble分析工具 | 非本次驗收主線 |
+| `scripts/print.py` | Runtime驗證與new files（T3.6） | 彙整ensemble分析pickle結果，AlphaFlow下載 | 非本次驗收主線 |
+| `.gitignore` | Runtime驗證與new files（T3.6） | 排除checkpoint、workdir、wandb及暫存檔 | Repository設定 |
 
-### T3.3-FP32
+### T3.1.2 — New args in existing files
 
-MDGen-2026全程使用FP32，不啟用bf16、AMP或TF32，以便進行嚴格的數值等價測試。<br>
+本節只列出原有檔案中新增的args，不列新增檔案自己定義的args。Training runtime args仍由原有的`mdgen/parsing.py`定義，因此列於此表；正式`train.py`不使用這三個量測args，只有`train-runtime.py`會讀取並執行對應功能。
 
-| 項目 | 原始code狀態 | MDGen-2026處理方式 | 修改檔案與block_name |
+| 新增args | 原有檔案 | 預設行為 | 方向（T3.x） | 新增原因／block_name |
+|---|---|---|---|---|
+| `--use_sdpa` | `mdgen/parsing.py` | 未提供時使用manual attention | SDPA（T3.2） | 保留同環境A/B比較路徑；`sdpa-route` |
+| `--print_sdpa_backend <path>` | `mdgen/parsing.py` | 預設不啟用profiler | Runtime驗證（T3.6） | 由`train-runtime.py`輸出實際SDPA backend；`sdpa-diagnostics` |
+| `--peak_memory <file_path>` | `mdgen/parsing.py` | 預設不輸出JSON | Runtime驗證（T3.6） | 由`train-runtime.py`紀錄training CUDA peak memory與OOM；`peak_memory` |
+| `--execution_time <file_path>` | `mdgen/parsing.py` | 預設不輸出JSON | Runtime驗證（T3.6） | 由`train-runtime.py`紀錄排除warm-up後的sec/step；`execution_time` |
+| `--train_seed <int>` | `mdgen/parsing.py` | 137 | Deterministic／seed（T3.4） | 控制training seed；`seed-deterministic-args` |
+| `--deterministic`／`--no-deterministic` | `mdgen/parsing.py` | deterministic開啟 | Deterministic／seed（T3.4） | 控制deterministic algorithms；`seed-deterministic-args` |
+| `--benchmark`／`--no-benchmark` | `mdgen/parsing.py` | cuDNN benchmark關閉 | Deterministic／seed（T3.4） | 控制cuDNN autotuner；`seed-deterministic-args` |
+| `--model_dir <path>` | `mdgen/parsing.py` | 使用`workdir/<run_name>` | Other（T3.5） | 可選training輸出根目錄；`model-output-dir` |
+| `--use_sdpa` | `sim_inference.py` | 未提供時使用manual attention | SDPA（T3.2） | inference SDPA路徑；`sdpa-route` |
+| `--inference_seed <int>` | `sim_inference.py` | 137 | Deterministic／seed（T3.4） | 控制inference seed；`seed-deterministic-args` |
+| `--deterministic`／`--no-deterministic` | `sim_inference.py` | deterministic開啟 | Deterministic／seed（T3.4） | 控制deterministic algorithms；`seed-deterministic-args` |
+| `--benchmark`／`--no-benchmark` | `sim_inference.py` | cuDNN benchmark關閉 | Deterministic／seed（T3.4） | 控制cuDNN autotuner；`seed-deterministic-args` |
+| `--atlas_dir` | `scripts/prep_sims.py` | 舊`--sim_dir`仍可作為alias | Other（T3.5） | 統一程式實際使用的欄位名稱；`data-preprocess-fixes` |
+
+`--precision`原本已存在，因此不是new arg；MDGen-2026只把允許值限制為`32-true`，詳細修改列於T3.2.2。
+
+## T3.2 — SDPA
+
+### T3.2.1 — Attention實作
+
+MDGen-2026將原本的`bmm → mask → softmax → dropout → bmm`改為`F.scaled_dot_product_attention`，Q/K/V projection、residue/time兩軸attention、RoPE、bias K/V、dropout及output projection語意維持不變。
+
+| 項目 | 處理方式 | 修改檔案 | block_name |
 |---|---|---|---|
-| Training precision | `--precision`可使用其他精度設定 | 限制為`32-true`，避免啟用mixed precision | `mdgen/parsing.py`, `fp32-training-precision` |
-| Matmul計算精度 | Training設定為`medium`，可能使用較低的內部計算精度 | Training與inference皆設定為`highest` | `train.py`+`sim_inference.py`, `fp32-matmul-precision` |
-| TF32 | 原始code未明確關閉TF32 | 明確關閉CUDA matmul與cuDNN的TF32 | `train.py`+`sim_inference.py`, `fp32-disable-tf32` |
-| Inference模型dtype | 載入模型後未明確指定dtype | 使用`model.eval().float()`，確保模型以FP32執行 | `sim_inference.py`, `fp32-inference-model` |
-| Data pipeline dtype | `prep_sims.py`將座標以float16存入NPY，且TPS inference路徑未統一轉為float32 | 預處理階段直接將座標以float32存入NPY，避免先經float16量化；inference所有路徑載入後皆明確複製為float32 | `scripts/prep_sims.py`+`sim_inference.py`, `fp32-data-pipeline` |
+| SDPA route | 由wrapper將`use_sdpa`傳入各attention layer；未開啟時維持manual路徑，SDPA不適用時記錄fallback原因 | `mdgen/wrapper.py`、`mdgen/model/latent_model.py`、`mdgen/model/mha.py` | `sdpa-route` |
+| Scaling | 保留原本`q *= self.scaling`，SDPA指定`scale=1.0`，避免double scaling | `mdgen/model/mha.py` | `sdpa-scaling` |
+| Mask | 將fairseq的padding mask反轉成SDPA保留mask；mask為no-op時傳入`None` | `mdgen/model/mha.py` | `sdpa-mask` |
+| bias K/V | MDGen確實使用`add_bias_kv=True`，因此保留K/V append及mask延長流程 | `mdgen/model/mha.py` | `sdpa-bias-kv` |
+| Dropout | Training使用原dropout，eval傳入`0.0` | `mdgen/model/mha.py` | `sdpa-dropout` |
+| Layout/output | SDPA前轉成`B,H,L,D`，完成後還原並通過原本`out_proj` | `mdgen/model/mha.py` | `sdpa-layout-output` |
+| Time-axis mask | Time-axis attention沿用相同的mask及SDPA轉換流程 | `mdgen/model/latent_model.py` | `sdpa-time-axis-mask` |
 
-### T3.4-positionID
+### T3.2.2 — FP32執行條件
 
-MDGen-2026將PDB residue number(目前是以ATLAS提供的pdb為版本，如果有其他pdb格式，需要更改的事`scripts/prep-protein-csv.py`)轉換成`position_ids`，並從CSV一路傳遞至RoPE介面。現階段RoPE仍沿用原本的連續位置計算，因此不改變既有模型數值<br>
-| 項目 | 原始code狀態 | MDGen-2026處理方式 | 修改檔案與block_name |
+本次規格全程使用FP32，不啟用bf16、AMP或TF32。這些是本次SDPA等價性與benchmark的固定條件，不另外提供切換到其他dtype的args。
+
+| 項目 | 處理方式 | 修改檔案 | block_name |
 |---|---|---|---|
-| CSV產生 | 原始CSV只有protein name與`seqres` | 從PDB residue number產生以0為起點且保留gap的`position_ids`，以JSON格式寫入CSV | `scripts/prep-protein-csv.py`, `position-id-csv` |
-| Training資料讀取 | Dataset沒有`position_ids` | CSV有`position_ids`時讀取；沒有時使用`arange(L)`，並檢查長度 | `mdgen/dataset.py`, `position-id-dataset` |
-| Crop與padding | 未處理position資訊 | Crop時同步裁切；padding時同步補齊`position_ids` | `mdgen/dataset.py`, `position-id-crop-padding` |
-| Inference資料讀取 | Inference只讀取`seqres` | CSV有`position_ids`時讀取；沒有時使用`arange(L)` | `sim_inference.py`, `position-id-inference-input` |
-| Inference內部傳遞 | Inference batch與rollout沒有position資訊 | 檢查`seqres`、`position_ids`及NPY residue數量一致，並經由`get_batch`、rollout與expanded batch將`position_ids`傳入model | `sim_inference.py`, `position-id-inference-routing` |
-| Model kwargs傳遞 | Wrapper未傳遞position資訊 | Training、validation與inference皆將`position_ids`加入`model_kwargs` | `mdgen/wrapper.py`, `position-id-wrapper` |
-| Model內部傳遞 | Latent model與各attention layer沒有`position_ids`參數 | 將`position_ids`傳入prepend IPA與各層residue-axis MHA | `mdgen/model/latent_model.py`, `position-id-model-routing` |
-| Residue-axis排列 | Residue MHA使用`B×T`作為batch維度 | 將`(B,L)`展開為`(B×T,L)`；time-axis MHA不使用residue位置 | `mdgen/model/latent_model.py`, `position-id-residue-layout` |
-| MHA與RoPE介面 | MHA直接呼叫`self.rot_emb(q, k)` | MHA與RoPE新增`position_ids=None`介面；目前仍使用原本RoPE計算，保持數值不變 | `mdgen/model/mha.py`, `position-id-rope-interface` |
+| Training precision | 將既有`--precision`限制為`32-true` | `mdgen/parsing.py` | `fp32-training-precision` |
+| Matmul precision | Training與inference均設定為`highest` | `train.py`、`train-runtime.py`、`sim_inference.py` | `fp32-matmul-precision` |
+| TF32 | 明確關閉CUDA matmul及cuDNN TF32 | `train.py`、`train-runtime.py`、`sim_inference.py` | `fp32-disable-tf32` |
+| Inference model | checkpoint載入後使用`model.eval().float()` | `sim_inference.py` | `fp32-inference-model` |
+| Data pipeline | NPY座標及inference輸入使用float32，避免先經float16量化 | `scripts/prep_sims.py`、`sim_inference.py` | `fp32-data-pipeline` |
 
-## T3.5-seed_and_deterministic
+## T3.3 — Position ID
 
-MDGen-2026為training與inference加入可設定的seed與deterministic控制。預設使用seed 137、開啟deterministic並關閉cuDNN benchmark，讓manual attention與SDPA能在相同條件下比較。<br>
+老師要求的核心範圍是RoPE加入`position_ids=None`介面，且None路徑保持數值等價。目前實作另外把欄位由CSV傳到residue-axis MHA，作為後續fork的介面準備；RoPE仍沿用原本的連續位置計算，因此本次不宣稱true-gap或multi-chain語意已完成。
 
-| 項目 | 原始code狀態 | MDGen-2026處理方式 | 修改檔案與block_name |
+| 項目 | 處理方式 | 修改檔案 | block_name |
 |---|---|---|---|
-| Runtime參數 | Training只有註解掉的seed設定；inference沒有seed與deterministic參數 | 新增`--train_seed`、`--inference_seed`、`--deterministic`與`--benchmark`，預設seed為137、deterministic開啟、benchmark關閉 | `mdgen/parsing.py`+`sim_inference.py`, `seed-deterministic-args` |
-| Seed初始化 | 原始code沒有實際執行統一seed設定 | 使用`seed_everything(..., workers=True)`固定Python、NumPy、PyTorch與DataLoader worker的seed | `train.py`+`sim_inference.py`, `seed-initialization` |
-| Deterministic執行 | 原始code未明確要求deterministic演算法 | Training將設定交給Lightning Trainer；inference使用`torch.use_deterministic_algorithms` | `train.py`+`sim_inference.py`, `deterministic-execution` |
-| cuDNN benchmark | 原始code未明確控制benchmark | 將benchmark設定傳入training與inference；禁止同時開啟deterministic與benchmark | `mdgen/parsing.py`+`train.py`+`sim_inference.py`, `deterministic-benchmark-guard` |
+| RoPE介面 | MHA及RoPE接受`position_ids=None`；目前保持原始連續位置計算 | `mdgen/model/mha.py` | `position-id-rope-interface` |
+| Dataset讀取 | CSV有欄位時讀取並檢查長度，沒有時使用`arange(L)` | `mdgen/dataset.py` | `position-id-dataset` |
+| Crop/padding | 與sequence同步crop；padding時同步補齊 | `mdgen/dataset.py` | `position-id-crop-padding` |
+| Wrapper routing | Training、validation及inference加入model kwargs | `mdgen/wrapper.py` | `position-id-wrapper` |
+| Model routing | 經latent model傳到residue-axis attention | `mdgen/model/latent_model.py` | `position-id-model-routing` |
+| Residue layout | 將`B,L`展開成residue attention使用的`B×T,L`；time-axis不使用 | `mdgen/model/latent_model.py` | `position-id-residue-layout` |
+| Inference input | 從CSV讀取；沒有欄位時使用連續位置 | `sim_inference.py` | `position-id-inference-input` |
+| Inference routing | 檢查CSV、NPY residue數後經rollout傳入model | `sim_inference.py` | `position-id-inference-routing` |
 
-## T3.6-scripts/prep-protein-csv.py
-原始MDGen需要從CSV讀取蛋白質名稱與胺基酸序列，其中seqres使用單字母胺基酸代號；這些代號及其對應關係定義於mdgen/residue_constants.py。但原始MDGen沒有提供從PDB檔案產生所需CSV的程式，因此MDGen2026新增scripts/prep-protein-csv.py，將PDB中的三字母胺基酸名稱轉換為單字母序列，並輸出可供Dataset讀取的CSV。
-此腳本同時從PDB residue number產生position_ids。第一個residue的位置會正規化為0，後續位置保留原始PDB residue number的間距。例如原始編號為10, 11, 14時，輸出的position_ids為[0, 1, 4]，因此能保留缺失residue所形成的gap。
-```
-name,seqres,position_ids
-1a62_A,MNLTELKNTPVSELITLGENMGLENLARMRKQDIIFAILKQHAKSGEDIFGDGVLEILQDGFGFLRSADSSYLAGPDDIYVSPSQIRRFNLRTGDTISGKIRPPKEGERYFALLKVNEVNFDKPENARNK,"[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129]"
-```
+## T3.4 — Deterministic與seed
 
-## T3.7-other
+MDGen-2026預設seed為137、開啟deterministic algorithms並關閉cuDNN benchmark；使用者仍可透過T3.1.2列出的args調整。
 
-以下項目不屬於SDPA、FP32、position ID、seed/deterministic或`prep-protein-csv.py`的主要功能修改，主要是原始code修正與新版環境相容性處理。
-
-| 項目 | 原始code狀態 | MDGen-2026處理方式 | 修改檔案與block_name |
+| 項目 | 處理方式 | 修改檔案 | block_name |
 |---|---|---|---|
-| Data preprocess修正 | Frame window抽樣未包含最後合法位置，且`prep_sims.py`的CLI參數名稱與實際讀取欄位不一致 | 修正frame數檢查與抽樣邊界，並將ATLAS目錄參數統一為`--atlas_dir` | `mdgen/dataset.py`+`scripts/prep_sims.py`, `data-preprocess-fixes` |
-| Runtime相容性 | 新版FlashAttention可能缺少legacy API，且`batched_gather`使用list形式indexing | 對FlashAttention legacy API加入optional import guard，並將index list轉為tuple以相容新版執行環境 | `mdgen/model/primitives.py`+`mdgen/tensor_utils.py`, `runtime-compatibility` |
-| Peak memory紀錄 | 原始training流程沒有輸出CUDA peak memory | 新增`--peak_memory <file_path>`；training開始前重設CUDA peak-memory統計，結束後將allocated／reserved峰值、完成step數與執行設定寫入指定JSON | `mdgen/parsing.py`+`train.py`, `peak_memory` |
-| Execution time紀錄 | 原始`model_dur`使用CPU wall time且沒有同步CUDA，無法作為可靠的GPU step time | 新增`--execution_time <file_path>`；以CUDA Event量測完整training step，固定排除前5個warm-up steps，並輸出平均／中位數／最小／最大sec/step | `mdgen/parsing.py`+`train.py`, `execution_time` |
+| Args | 新增training/inference seed、deterministic及cuDNN benchmark控制 | `mdgen/parsing.py`、`sim_inference.py` | `seed-deterministic-args` |
+| Seed初始化 | 使用`seed_everything(..., workers=True)`固定Python、NumPy、PyTorch及DataLoader worker | `train.py`、`train-runtime.py`、`sim_inference.py` | `seed-initialization` |
+| Deterministic執行 | Training交由Lightning Trainer；inference呼叫`torch.use_deterministic_algorithms` | `train.py`、`train-runtime.py`、`sim_inference.py` | `deterministic-execution` |
+| cuDNN benchmark guard | 禁止deterministic與cuDNN benchmark同時開啟 | `mdgen/parsing.py`、`train.py`、`train-runtime.py`、`sim_inference.py` | `deterministic-benchmark-guard` |
 
-## T3.8-test_sdpa.py
+## T3.5 — Other block names
 
-`test_sdpa.py`是獨立的MHA模組級等價性測試，不執行完整training或inference，也不讀取checkpoint、CSV或trajectory NPY。測試以固定seed產生FP32 input、mask與上游gradient，建立權重完全相同的manual MHA與SDPA MHA，並在`eval()`模式下保留autograd執行forward與backward。<br>
-
-| 項目 | 測試方式 | 輸出或判準 | 檔案與block_name |
+| 修改檔案 | block_name | 修改內容 | 定位 |
 |---|---|---|---|
-| Forward等價性 | 比較經過`out_proj`後的MHA output | `max\|manual-SDPA\| / max\|manual\| < 1e-5` | `test_sdpa.py`, `sdpa-equivalence-test` |
-| Backward等價性 | 使用相同上游gradient，比較input gradient與所有MHA parameter gradients | gradient relative error `< 1e-4` | `test_sdpa.py`, `sdpa-equivalence-test` |
-| Case覆蓋 | residue/time axis各測padding與no-padding，並使用`position_ids=None` | 四種case全數通過 | `test_sdpa.py`, `sdpa-equivalence-test` |
-| 執行路徑 | manual組必須走manual path，SDPA組必須實際走SDPA path | 若SDPA fallback至manual則測試失敗 | `test_sdpa.py`, `sdpa-equivalence-test` |
+| `mdgen/model/primitives.py`、`mdgen/tensor_utils.py`、`sim_inference.py` | `runtime-compatibility` | 對legacy FlashAttention加入optional import guard、將新版PyTorch不接受的list indexing改為tuple，並以`weights_only=False`載入舊Lightning checkpoint | PyTorch 2.x與checkpoint相容性所需 |
+| `mdgen/wrapper.py` | `checkpoint-runtime-args` | `save_hyperparameters`只保存原有`args`，避免`use_sdpa`等runtime選項成為checkpoint建構需求 | 新增runtime args後的checkpoint相容處理 |
+| `mdgen/dataset.py`、`scripts/prep_sims.py` | `data-preprocess-fixes` | 修正frame不足錯誤及最後合法window未被抽到；統一`atlas_dir`欄位並保留舊`--sim_dir` alias | 額外bug fix，不是SDPA主線要求 |
+| `mdgen/parsing.py` | `model-output-dir` | 支援`--model_dir`指定training輸出根目錄 | 額外便利功能；未提供時維持原路徑 |
+| `.gitignore` | `repository-artifacts` | 排除大型輸出及暫存檔 | 不影響model runtime |
 
-執行時只需指定輸出目錄：
-```
-python test_sdpa.py --output_dir test_results/sdpa
-```
-每個case會儲存manual與SDPA的output NPY、input gradient NPY、parameter gradient NPZ及`result.json`；總結與環境資訊寫入`summary.json`。
+## T3.6 — Runtime驗證與new files
+
+### T3.6.1 — `train-runtime.py`與runtime instrumentation
+
+`train-runtime.py`由完成本次量測功能的training入口保留下來，專門執行A2、A3及T5 training benchmark。正式`train.py`已移除profiler、peak-memory與execution-time實作，只保留一般training流程。兩者目前共用`mdgen/parsing.py`，但只有`train-runtime.py`讀取並使用三個量測args。
+
+| 功能 | 執行方式與輸出 | 修改檔案 | block_name |
+|---|---|---|---|
+| SDPA backend | `--print_sdpa_backend`啟用profiler，輸出實際operator/backend及各attention module的manual/SDPA path | `train-runtime.py`、`benchmark_l_scaling.py`、`mdgen/model/mha.py` | `sdpa-diagnostics` |
+| Peak memory | `--peak_memory`在training前reset CUDA peak，成功或OOM時輸出allocated/reserved、完成step及執行設定 | `mdgen/parsing.py`、`train-runtime.py` | `peak_memory` |
+| Execution time | `--execution_time`使用CUDA Event量測完整training step，排除前5個warm-up step後輸出mean/median/min/max | `mdgen/parsing.py`、`train-runtime.py` | `execution_time` |
+
+Training backend由`train-runtime.py`確認；inference條件下的backend則由`benchmark_l_scaling.py`以A4單次model forward確認。Profiler會影響效能及memory，因此backend確認與正式memory/time量測應分開執行。
+
+### T3.6.2 — `test_sdpa.py`
+
+`test_sdpa.py`是獨立的MHA模組級等價性測試，以固定seed建立權重相同的manual與SDPA MHA，使用相同FP32 input、mask及上游gradient，在`eval()`模式下比較forward output、input gradient及parameter gradients。測試涵蓋residue/time axis各自的padding及no-padding case，並要求SDPA組不能fallback到manual。
+
+輸出包含各case的output NPY、input-gradient NPY、parameter-gradient NPZ、`result.json`及總結`summary.json`。對應block name為`sdpa-equivalence-test`，T4/A1使用此檔案。
+
+### T3.6.3 — `benchmark_l_scaling.py`
+
+`benchmark_l_scaling.py`載入既有checkpoint，以FP32、B=1、無gradient checkpointing及`torch.inference_mode()`執行完整`LatentMDGenModel`單次forward。預設量測L=256/1000/2500/5000/7500，逐case輸出CUDA peak allocated/reserved、attention path及OOM資訊；首次OOM後預設停止。
+
+此檔案另提供`--print_sdpa_backend <path>`：以第一個指定L額外執行一次獨立profiling forward，輸出實際PyTorch SDPA operator/backend與各attention module路徑。這代表與A4相同B/T/L、FP32、mask及inference mode條件下的單次model forward，不宣稱量測完整ODE rollout；正式peak-memory數據應另一次不開profiler執行。對應block name為`a4-l-scaling`及`sdpa-diagnostics`，T5/A4使用此檔案。
+
+### T3.6.4 — `scripts/prep-protein-csv.py`
+
+此工具從PDB建立`name,seqres,position_ids` CSV。每條chain分別將第一個PDB residue number正規化為0並保留chain內gap，例如10、11、14輸出為`[0,1,4]`。它只負責測試資料準備，不是SDPA實作；對應block name為`position-id-csv`。
+
+### T3.6.5 — Ensemble工具
+
+`scripts/analyze_ensemble.py`及`scripts/print.py`是從AlphaFlow取得的下游ensemble分析與結果彙整工具，對應`ensemble-analysis-tool`及`ensemble-report-tool`。兩者不參與老師指定的T4模組等價性或T5硬體驗收，只有被獨立執行時才生效。
 
 # T4-等價性測試
+## code執行
+cu126
+```
+conda activate mdgen2026
+python test_sdpa.py \
+  --device cuda \
+  --seed 137 \
+  --output_dir my_new/t4-cu126
+```
+cu130
+```
+conda activate mdgen2026-cu130
+python test_sdpa.py \
+  --device cuda \
+  --seed 137 \
+  --output_dir my_new/t4-cu130
+```
+## result
+| CUDA環境 | Case | Output relative error | Input grad relative error | Parameter grad relative error | 結果 |
+|---|---|---:|---:|---:|---|
+| cu126 | Residue / no padding | 5.595 × 10⁻⁷ | 4.854 × 10⁻⁷ | 8.642 × 10⁻⁷ | Pass |
+| cu126 | Residue / padding | 5.120 × 10⁻⁷ | 5.119 × 10⁻⁷ | 8.243 × 10⁻⁷ | Pass |
+| cu126 | Time / no padding | 3.754 × 10⁻⁷ | 3.994 × 10⁻⁷ | 5.065 × 10⁻⁷ | Pass |
+| cu126 | Time / padding | 3.164 × 10⁻⁷ | 4.229 × 10⁻⁷ | 5.416 × 10⁻⁷ | Pass |
+| cu130 | Residue / no padding | 5.595 × 10⁻⁷ | 4.854 × 10⁻⁷ | 8.642 × 10⁻⁷ | Pass |
+| cu130 | Residue / padding | 5.120 × 10⁻⁷ | 5.119 × 10⁻⁷ | 8.243 × 10⁻⁷ | Pass |
+| cu130 | Time / no padding | 3.754 × 10⁻⁷ | 3.994 × 10⁻⁷ | 5.065 × 10⁻⁷ | Pass |
+| cu130 | Time / padding | 3.164 × 10⁻⁷ | 4.229 × 10⁻⁷ | 5.416 × 10⁻⁷ | Pass |
 
-## T4.1-data_preprocess與執行流程
 
-### T4.1.1-測試蛋白質與atlas.ckpt
+# T5-Benchmark 與硬體驗收
+
+## T5.0-Benchmark protocol 與測試條件
+```
+GPU：RTX 4090 24 GB
+PyTorch：2.12.1
+CUDA wheel：cu126 / cu130
+dtype：FP32
+TF32：off
+T：250
+seed：137
+data：同一份 CSV 與 NPY
+validation：off
+profiler 與 memory/time 測量分開
+```
+測試變因
+```
+CUDA：cu126 / cu130
+Attention：manual / SDPA
+Gradient checkpointing：off / on
+Batch size：由 1 往上
+```
+## T5.1-Datapreprocess
 本次測試使用`1a62_A`與`1bkp_A`兩個蛋白質，並將training的`crop`設定為256。兩個蛋白質分別短於及長於cropping window，可同時測試padding與cropping兩種資料處理路徑。
 | 蛋白質 | Residue數量 | 與crop=256的關係 | Dataset處理方式 | 測試目的 |
 |---|---:|---|---|---|
@@ -428,17 +478,13 @@ python test_sdpa.py --output_dir test_results/sdpa
 ```
 bash ./my_new/download_atlas.sh
 ```
-
-atlas.ckpt在https://huggingface.co/bjing-mit/mdgen下載 並存入./ckpt中
-
-#### making csv
+### making csv
 ```
 python scripts/prep-protein-csv.py \
   --input_dir data/pdbxtc \
   --output_csv data/proteins-mdgen2026.csv
 ```
-
-#### making npy
+### making npy
 ```
 python scripts/prep_sims.py \
   --split data/proteins-mdgen2026.csv \
@@ -449,191 +495,513 @@ python scripts/prep_sims.py \
   --atlas
 ```
 
-### T4.1.2-原始MDGen
-MDGen-2026以原始MDGen為基礎進行擴充，並保留原本的manual attention執行路徑。測試時不加入`--use_sdpa`即可執行原始attention流程，作為MDGen baseline；其餘設定保持相同，再加入`--use_sdpa`進行SDPA比較。
+## T5.2-實際 SDPA backend 確認
 
-
-#### train
-```
-python train.py \
-  --sim_condition \
-  --train_split data/proteins-mdgen2026.csv \
-  --val_split data/proteins-mdgen2026.csv \
-  --data_dir data/npy \
-  --num_frames 250 \
-  --batch_size 1 \
-  --prepend_ipa \
-  --crop 256 \
-  --val_repeat 25 \
-  --epochs 10 \
-  --atlas \
-  --ckpt_freq 9 \
-  --run_name origin-mdgen \
-  --grad_checkpointing \
-  --model_dir ckpt
-```
-
-#### inference
-```
-python model/mdgen2026/sim_inference.py \
---sim_ckpt ckpt/atlas.ckpt \
---data_dir data/atlas/npy \
---num_frames 250 \
---num_rollouts 1 \
---split data/proteins-mdgen2026.csv \
---suffix _R1 \
---out_dir data/inference/origin-mdgen
-```
-
-## T4.2-SDPA backend確認
-origin
-```
-python train.py \
-  --sim_condition \
-  --train_split data/proteins-mdgen2026.csv \
-  --val_split data/proteins-mdgen2026.csv \
-  --data_dir data/npy \
-  --num_frames 250 \
-  --batch_size 1 \
-  --prepend_ipa \
-  --crop 256 \
-  --val_repeat 25 \
-  --epochs 10 \
-  --atlas \
-  --ckpt_freq 9 \
-  --run_name origin-mdgen \
-  --grad_checkpointing \
-  --print_sdpa_backend my_new/origin-backend
-  --model_dir ckpt
-```
-sdpa
-```
-python train.py \
-  --sim_condition \
-  --train_split data/proteins-mdgen2026.csv \
-  --val_split data/proteins-mdgen2026.csv \
-  --data_dir data/npy \
-  --num_frames 250 \
-  --batch_size 1 \
-  --prepend_ipa \
-  --crop 256 \
-  --val_repeat 25 \
-  --epochs 10 \
-  --atlas \
-  --ckpt_freq 9 \
-  --run_name origin-mdgen \
-  --grad_checkpointing \
-  --print_sdpa_backend my_new/sdpa-backend \
-  --model_dir ckpt \
-  --use_sdpa
-```
-
-## T4.3-驗收結果
-### T4.3.1-A1-模組級等價性
-### run
+### code執行
+cu126
 ```
 conda activate mdgen2026
-python test_sdpa.py --output_dir /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/my_new/cu126-npy
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 1 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name t5-backend-cu126-sdpa \
+  --model_dir workdir \
+  --use_sdpa \
+  --print_sdpa_backend my_new/t5/backend/cu126-sdpa.txt
 ```
-output>[cu126-summary.json](my_new/cu126-npy/summary.json)
+cu130
 ```
 conda activate mdgen2026-cu130
-python test_sdpa.py --output_dir /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/my_new/cu130-npy
-```
-output>[cu130-summary.json](my_new/cu130-npy/summary.json)
 
-### sumamry
-| Case | Output relative error | Input grad relative error | Parameter grad relative error | 結果 |
-|---|---:|---:|---:|---|
-| Residue axis／no padding | 5.595 × 10⁻⁷ | 4.854 × 10⁻⁷ | 8.642 × 10⁻⁷ | Pass |
-| Residue axis／padding | 5.120 × 10⁻⁷ | 5.119 × 10⁻⁷ | 8.243 × 10⁻⁷ | Pass |
-| Time axis／no padding | 3.754 × 10⁻⁷ | 3.994 × 10⁻⁷ | 5.065 × 10⁻⁷ | Pass |
-| Time axis／padding | 3.164 × 10⁻⁷ | 4.229 × 10⁻⁷ | 5.416 × 10⁻⁷ | Pass |
-
-# T5－Benchmark 與硬體驗收
-
-## A2-L=256 訓練峰值記憶體
-
-origin
-```
-python train.py \
+python train-runtime.py \
   --sim_condition \
   --train_split data/proteins-mdgen2026.csv \
   --val_split data/proteins-mdgen2026.csv \
   --data_dir data/npy \
-  --num_frames 250 \
-  --batch_size 1 \
+  --atlas \
   --prepend_ipa \
+  --num_frames 250 \
   --crop 256 \
-  --no_validate \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
   --epochs 1 \
-  --atlas \
-  --ckpt_freq 1 \
-  --run_name origin-mdgen \
-  --model_dir ckpt \
-  --peak_memory my_new/peak_memory/manual.json
-```
-sdpa
-```
-python train.py \
-  --sim_condition \
-  --train_split data/proteins-mdgen2026.csv \
-  --val_split data/proteins-mdgen2026.csv \
-  --data_dir data/npy \
-  --num_frames 250 \
-  --batch_size 1 \
-  --prepend_ipa \
-  --crop 256 \
+  --train_batches 1 \
   --no_validate \
-  --epochs 35 \
-  --atlas \
-  --ckpt_freq 35 \
-  --run_name origin-mdgen \
-  --model_dir ckpt \
+  --ckpt_freq 999 \
+  --run_name t5-backend-cu130-sdpa \
+  --model_dir workdir \
   --use_sdpa \
-  --peak_memory my_new/peak_memory/sdpa.json
+  --print_sdpa_backend my_new/t5/backend/cu130-sdpa.txt
 ```
-## A3－4090 實跑
+### result
+| CUDA環境 | PyTorch | Requested path | Selected backend | 結果 |
+|---|---|---|---|---|
+| cu126 | 2.12.1+cu126 | SDPA | EFFICIENT_ATTENTION | Pass |
+| cu130 | 2.12.1+cu130 | SDPA | EFFICIENT_ATTENTION | Pass |
 
-origin
+## T5.3-A2/A3
+### 定義要跑項目
+| 編號 | CUDA環境 | Attention | Gradient checkpointing | Batch size | 目的 |
+|---|---|---|---|---:|---|
+| C1 | cu126 | Manual | Off | 1 | cu126原始attention基準 |
+| C2 | cu126 | SDPA | Off | 1 | cu126正式SDPA主結果 |
+| C3 | cu130 | Manual | Off | 1 | cu130原始attention基準 |
+| C4 | cu130 | SDPA | Off | 1 | cu130正式SDPA主結果 |
+| C5 | cu126 | Manual | On | 1 | checkpointing對manual的影響 |
+| C6 | cu126 | SDPA | On | 1 | checkpointing對cu126 SDPA的影響 |
+| C7 | cu130 | Manual | On | 1 | checkpointing對cu130 manual的影響 |
+| C8 | cu130 | SDPA | On | 1 | checkpointing對cu130 SDPA的影響 |
+
+### code執行
+C1
 ```
-python train.py \
+conda activate mdgen2026
+python train-runtime.py \
   --sim_condition \
   --train_split data/proteins-mdgen2026.csv \
   --val_split data/proteins-mdgen2026.csv \
   --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
   --num_frames 250 \
+  --crop 256 \
   --batch_size 1 \
-  --prepend_ipa \
-  --crop 256 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 105 \
+  --train_batches 1 \
   --no_validate \
-  --epochs 35 \
-  --atlas \
-  --ckpt_freq 35 \
-  --run_name origin-mdgen \
-  --grad_checkpointing \
-  --model_dir ckpt \
-  --execution_time my_new/execution_time/manual.json
+  --ckpt_freq 999 \
+  --run_name C1-cu126-manual-gc-off \
+  --model_dir workdir \
+  --peak_memory my_new/t5/A2A3/C1-cu126-manual-gc-off-memory.json \
+  --execution_time my_new/t5/A2A3/C1-cu126-manual-gc-off-time.json
 ```
-sdpa
+C2
+```
+conda activate mdgen2026
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C2-cu126-sdpa-gc-off \
+  --model_dir workdir \
+  --use_sdpa \
+  --peak_memory my_new/t5/A2A3/C2-cu126-sdpa-gc-off-memory.json \
+  --execution_time my_new/t5/A2A3/C2-cu126-sdpa-gc-off-time.json
+```
+C3
+```
+conda activate mdgen2026-cu130
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C3-cu130-manual-gc-off \
+  --model_dir workdir \
+  --peak_memory my_new/t5/A2A3/C3-cu130-manual-gc-off-memory.json \
+  --execution_time my_new/t5/A2A3/C3-cu130-manual-gc-off-time.json
+```
+C4
+```
+conda activate mdgen2026-cu130
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C4-cu130-sdpa-gc-off \
+  --model_dir workdir \
+  --use_sdpa \
+  --peak_memory my_new/t5/A2A3/C4-cu130-sdpa-gc-off-memory.json \
+  --execution_time my_new/t5/A2A3/C4-cu130-sdpa-gc-off-time.json
+```
+C5
+```
+conda activate mdgen2026
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C5-cu126-manual-gc-on \
+  --model_dir workdir \
+  --grad_checkpointing \
+  --peak_memory my_new/t5/A2A3/C5-cu126-manual-gc-on-memory.json \
+  --execution_time my_new/t5/A2A3/C5-cu126-manual-gc-on-time.json
+```
+C6
+```
+conda activate mdgen2026
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C6-cu126-sdpa-gc-on \
+  --model_dir workdir \
+  --use_sdpa \
+  --grad_checkpointing \
+  --peak_memory my_new/t5/A2A3/C6-cu126-sdpa-gc-on-memory.json \
+  --execution_time my_new/t5/A2A3/C6-cu126-sdpa-gc-on-time.json
+```
+C7
+```
+conda activate mdgen2026-cu130
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C7-cu130-manual-gc-on \
+  --model_dir workdir \
+  --grad_checkpointing \
+  --peak_memory my_new/t5/A2A3/C7-cu130-manual-gc-on-memory.json \
+  --execution_time my_new/t5/A2A3/C7-cu130-manual-gc-on-time.json
+```
+C8
+```
+conda activate mdgen2026-cu130
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C8-cu130-sdpa-gc-on \
+  --model_dir workdir \
+  --use_sdpa \
+  --grad_checkpointing \
+  --peak_memory my_new/t5/A2A3/C8-cu130-sdpa-gc-on-memory.json \
+  --execution_time my_new/t5/A2A3/C8-cu130-sdpa-gc-on-time.json
+```
+### result
+| Case | CUDA | Attention | Grad ckpt | Steps | Peak allocated | Peak reserved | sec/step | 結果 |
+|---|---|---|---|---:|---:|---:|---:|---|
+| C1 | cu126 | Manual | Off | 0 | ≥21.670 GiB | 22.715 GiB | — | OOM |
+| C2 | cu126 | SDPA | Off | 105 | 20.541 GiB | 21.295 GiB | 0.5050 | Pass |
+| C3 | cu130 | Manual | Off | 0 | ≥22.034 GiB | 22.848 GiB | — | OOM |
+| C4 | cu130 | SDPA | Off | 1 | ≥20.282 GiB | 21.041 GiB | — | OOM |
+| C5 | cu126 | Manual | On | 105 | 8.586 GiB | 16.311 GiB | 0.8803 | Pass |
+| C6 | cu126 | SDPA | On | 105 | 8.586 GiB | 16.311 GiB | 0.6668 | Pass |
+| C7 | cu130 | Manual | On | 1 | ≥16.520 GiB | 16.713 GiB | — | OOM |
+| C8 | cu130 | SDPA | On | 1 | ≥16.520 GiB | 16.713 GiB | — | OOM |
+
+## T5.4-A3-Batchsize
+### 定義
+| 編號 | CUDA | Attention | Grad ckpt | Batch size | 執行條件 |
+|---|---|---|---|---:|---|
+| C9 | cu126 | SDPA | Off | 2 | B=1已成功，測B=2 |
+| C10 | cu126 | Manual | On | 2 | B=1已成功，測B=2 |
+| C11 | cu126 | SDPA | On | 2 | B=1已成功，測B=2 |
+
+### 執行code
+C9
+```
+conda activate mdgen2026
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 2 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C9-cu126-sdpa-gc-off-b2 \
+  --model_dir workdir \
+  --use_sdpa \
+  --peak_memory my_new/t5/A2A3/C9-cu126-sdpa-gc-off-b2-memory.json \
+  --execution_time my_new/t5/A2A3/C9-cu126-sdpa-gc-off-b2-time.json
+```
+C10
+```
+conda activate mdgen2026
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 2 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C10-cu126-manual-gc-on-b2 \
+  --model_dir workdir \
+  --grad_checkpointing \
+  --peak_memory my_new/t5/A2A3/C10-cu126-manual-gc-on-b2-memory.json \
+  --execution_time my_new/t5/A2A3/C10-cu126-manual-gc-on-b2-time.json
+```
+C11
+```
+conda activate mdgen2026
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 2 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C11-cu126-sdpa-gc-on-b2 \
+  --model_dir workdir \
+  --use_sdpa \
+  --grad_checkpointing \
+  --peak_memory my_new/t5/A2A3/C11-cu126-sdpa-gc-on-b2-memory.json \
+  --execution_time my_new/t5/A2A3/C11-cu126-sdpa-gc-on-b2-time.json
+```
+### result
+| Case | 結果 | 錯誤類型 | 發生位置 |
+|---|---|---|---|
+| C9 | 未產生JSON | `torch._C._LinAlgError` | `prep_batch → get_offsets → rot_to_quat → torch.linalg.eigh` |
+| C10 | 未產生JSON | `torch._C._LinAlgError` | 同上 |
+| C11 | 未產生JSON | `torch._C._LinAlgError` | 同上 |
+CUSOLVER_STATUS_INVALID_VALUE
+B=1：1 × 250 × 256 = 64,000
+B=2：2 × 250 × 256 = 128,000
+
+## T5.5-L-scaling單次forward
+### 定義
+| 編號 | CUDA | Attention | Grad ckpt | Residue lengths |
+|---|---|---|---|---|
+| C12 | cu126 | Manual | Off | 256、1000、2500、5000、7500 |
+| C13 | cu126 | SDPA | Off | 256、1000、2500、5000、7500 |
+固定條件
+```
+B=1
+T=250
+FP32
+torch.inference_mode()
+gradient checkpointing=False
+synthetic inputs
+```
+### 執行code
+C12
+```
+conda activate mdgen2026
+
+python benchmark_l_scaling.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --lengths 256 1000 2500 5000 7500 \
+  --num_frames 250 \
+  --seed 137 \
+  --output my_new/t5/A4/C12-cu126-manual-l-scaling.json
+```
+C13
+```
+conda activate mdgen2026
+
+python benchmark_l_scaling.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --lengths 256 1000 2500 5000 7500 \
+  --num_frames 250 \
+  --seed 137 \
+  --use_sdpa \
+  --output my_new/t5/A4/C13-cu126-sdpa-l-scaling.json
+```
+### results
+| L | Manual peak allocated | Manual結果 | SDPA peak allocated | SDPA結果 |
+|---:|---:|---|---:|---|
+| 256 | 2.616 GiB | Pass | 1.894 GiB | Pass |
+| 1000 | ≥16.889 GiB | OOM | 6.978 GiB | Pass |
+| 2500 | 未執行 | — | 17.236 GiB | Pass |
+| 5000 | 未執行 | — | ≥20.428 GiB | OOM |
+| 7500 | 未執行 | — | 未執行 | — |
+
+# T5.6-A6 環境可複製驗收
+## 定義
+| 編號 | 驗證內容 | 是否必做 | 完成判準 |
+|---|---|---|---|
+| C14 | 從環境鎖定檔建立全新環境 | 必做 | Conda建立成功 |
+| C15 | 版本與import檢查 | 必做 | `import mdgen`成功，版本正確，GPU可見 |
+| C16 | ATLAS training smoke test | 必做 | 目標SDPA設定完成10 steps |
+| C17 | Manual inference一次 | 必做 | 產生輸出PDB |
+| C18 | SDPA inference一次 | 建議 | 產生輸出PDB |
+
+## 執行code
+C14
+```
+cd /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026
+conda env create \
+  --name mdgen2026-a6-cu126 \
+  --file my_new/environment-mdgen2026-cu126.yml
+```
+C15
+```
+conda activate mdgen2026-a6-cu126
+
+python -c "import torch; import pytorch_lightning as pl; import mdgen; print('torch:', torch.__version__); print('torch CUDA:', torch.version.cuda); print('Lightning:', pl.__version__); print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else None); print('import mdgen: PASS')"
+```
+C16
 ```
 python train.py \
   --sim_condition \
   --train_split data/proteins-mdgen2026.csv \
   --val_split data/proteins-mdgen2026.csv \
   --data_dir data/npy \
-  --num_frames 250 \
-  --batch_size 2 \
-  --prepend_ipa \
-  --crop 256 \
-  --no_validate \
-  --epochs 35 \
   --atlas \
-  --ckpt_freq 35 \
-  --run_name origin-mdgen \
-  --model_dir ckpt \
-  --grad_checkpointing \
-  --use_sdpa \
-  --execution_time my_new/execution_time/sdpa.json
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --epochs 10 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name A6-cu126-sdpa-train-smoke \
+  --model_dir workdir \
+  --use_sdpa
 ```
-## A4-L_scaling 曲線
+C17
+```
+python sim_inference.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --data_dir data/npy \
+  --split data/proteins-mdgen2026.csv \
+  --pdb_id 1a62_A \
+  --suffix _R1 \
+  --num_frames 250 \
+  --num_rollouts 1 \
+  --inference_seed 137 \
+  --out_dir my_new/t5/A6/inference-manual
+```
+C18
+```
+python sim_inference.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --data_dir data/npy \
+  --split data/proteins-mdgen2026.csv \
+  --pdb_id 1a62_A \
+  --suffix _R1 \
+  --num_frames 250 \
+  --num_rollouts 1 \
+  --inference_seed 137 \
+  --out_dir my_new/t5/A6/inference-sdpa \
+  --use_sdpa
+```
