@@ -8,10 +8,12 @@ Expected input layout:
 Output columns:
 
     name,seqres,position_ids
-
-The position_ids column is recorded for future model variants. MDGen-2026 r2
-does not consume it during training or inference.
 """
+
+# position-id-csv:start
+# The position_ids column is recorded for future model variants. MDGen-2026 r2
+# does not consume it during training or inference.
+# position-id-csv:end
 
 from __future__ import annotations
 

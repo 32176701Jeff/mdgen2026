@@ -350,11 +350,12 @@ class AttentionWithRoPE(nn.Module):
 
     def forward(self, x, mask, position_ids=None):  # position-id-model-routing
         x = x.transpose(0, 1)
+        key_padding_mask = ~mask.to(dtype=torch.bool)  # no-rope-padding-mask
         x, _ = self.attn(
             query=x,
             key=x,
             value=x,
-            key_padding_mask=1 - mask,
+            key_padding_mask=key_padding_mask,  # no-rope-padding-mask
             need_weights=False,  # sdpa-route
             position_ids=position_ids,  # position-id-model-routing
         )

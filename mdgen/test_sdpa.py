@@ -9,10 +9,12 @@ import numpy as np
 import torch
 
 from mdgen.model.mha import MultiheadAttention
+from mdgen.model.latent_model import AttentionWithRoPE  # sdpa-equivalence-test
 
 
 OUTPUT_RELATIVE_ERROR_LIMIT = 1e-5
 GRADIENT_RELATIVE_ERROR_LIMIT = 1e-4
+PADDING_INVARIANCE_ERROR_LIMIT = 1e-6  # sdpa-equivalence-test
 
 
 # sdpa-equivalence-test
@@ -53,6 +55,22 @@ class SDPAEquivalenceTest:
         sdpa.eval().to(device=self.device, dtype=torch.float32)
         return manual, sdpa
 
+    # sdpa-equivalence-test
+    def _build_no_rope_modules(self):
+        common_args = {
+            "embed_dim": self.embed_dim,
+            "num_heads": self.num_heads,
+            "dropout": 0.0,
+            "add_bias_kv": True,
+            "use_rotary_embeddings": False,
+        }
+        manual = AttentionWithRoPE(**common_args, use_sdpa=False)
+        sdpa = AttentionWithRoPE(**common_args, use_sdpa=True)
+        sdpa.load_state_dict(manual.state_dict())
+        manual.eval().to(device=self.device, dtype=torch.float32)
+        sdpa.eval().to(device=self.device, dtype=torch.float32)
+        return manual, sdpa
+
     def _make_mask(self, batch_size: int, sequence_length: int, padded: bool):
         mask = torch.zeros(
             batch_size,
@@ -73,6 +91,7 @@ class SDPAEquivalenceTest:
         }
         np.savez(path, **arrays)
 
+    # sdpa-equivalence-test
     def _test_position_ids_rejected(self):
         sequence_length = 8
         batch_size = 2
@@ -107,6 +126,121 @@ class SDPAEquivalenceTest:
             "manual_raises": rejected["manual"],
             "sdpa_raises": rejected["sdpa"],
             "passed": all(rejected.values()),
+        }
+
+    # sdpa-equivalence-test
+    def _test_no_rope_padding(self):
+        sequence_length = 32
+        batch_size = 4
+        manual, sdpa = self._build_no_rope_modules()
+        base_input = torch.randn(
+            batch_size,
+            sequence_length,
+            self.embed_dim,
+            dtype=torch.float32,
+            device=self.device,
+        )
+        mask = torch.ones(
+            batch_size,
+            sequence_length,
+            dtype=torch.float32,
+            device=self.device,
+        )
+        mask[0, -3:] = 0.0
+        mask[1, -1:] = 0.0
+        grad_output = torch.randn_like(base_input)
+
+        manual_input = base_input.detach().clone().requires_grad_(True)
+        sdpa_input = base_input.detach().clone().requires_grad_(True)
+        manual_output = manual(manual_input, mask=mask, position_ids=None)
+        sdpa_output = sdpa(sdpa_input, mask=mask, position_ids=None)
+
+        torch.autograd.backward(manual_output, grad_tensors=grad_output)
+        torch.autograd.backward(sdpa_output, grad_tensors=grad_output)
+        if manual_input.grad is None or sdpa_input.grad is None:
+            raise RuntimeError("no_rope_padding: input gradient was not produced")
+
+        manual_parameter_gradients = {
+            name: parameter.grad
+            for name, parameter in manual.named_parameters()
+            if parameter.grad is not None
+        }
+        sdpa_parameter_gradients = {
+            name: parameter.grad
+            for name, parameter in sdpa.named_parameters()
+            if parameter.grad is not None
+        }
+        if manual_parameter_gradients.keys() != sdpa_parameter_gradients.keys():
+            raise RuntimeError(
+                "no_rope_padding: manual and SDPA parameter gradients differ"
+            )
+
+        output_max_absolute_error, output_relative_error = self._relative_max_error(
+            manual_output, sdpa_output
+        )
+        input_grad_max_absolute_error, input_grad_relative_error = (
+            self._relative_max_error(manual_input.grad, sdpa_input.grad)
+        )
+        parameter_gradient_relative_error = 0.0
+        for parameter_name in manual_parameter_gradients:
+            _, relative_error = self._relative_max_error(
+                manual_parameter_gradients[parameter_name],
+                sdpa_parameter_gradients[parameter_name],
+            )
+            parameter_gradient_relative_error = max(
+                parameter_gradient_relative_error, relative_error
+            )
+        gradient_relative_error = max(
+            input_grad_relative_error, parameter_gradient_relative_error
+        )
+
+        padding_positions = ~mask.to(dtype=torch.bool)
+        perturbed_input = base_input.detach().clone()
+        perturbed_input[padding_positions] += 100.0
+        with torch.no_grad():
+            manual_perturbed_output = manual(
+                perturbed_input, mask=mask, position_ids=None
+            )
+            sdpa_perturbed_output = sdpa(
+                perturbed_input, mask=mask, position_ids=None
+            )
+        valid_positions = mask.to(dtype=torch.bool)
+        manual_padding_invariance_error = (
+            manual_output.detach()[valid_positions]
+            - manual_perturbed_output[valid_positions]
+        ).abs().max().item()
+        sdpa_padding_invariance_error = (
+            sdpa_output.detach()[valid_positions]
+            - sdpa_perturbed_output[valid_positions]
+        ).abs().max().item()
+
+        manual_path = manual.attn.last_attention_backend
+        sdpa_path = sdpa.attn.last_attention_backend
+        passed = (
+            manual_path == "torch_mha"
+            and sdpa_path == "sdpa"
+            and output_relative_error < OUTPUT_RELATIVE_ERROR_LIMIT
+            and gradient_relative_error < GRADIENT_RELATIVE_ERROR_LIMIT
+            and manual_padding_invariance_error < PADDING_INVARIANCE_ERROR_LIMIT
+            and sdpa_padding_invariance_error < PADDING_INVARIANCE_ERROR_LIMIT
+        )
+        return {
+            "sequence_length": sequence_length,
+            "effective_batch_size": batch_size,
+            "padding": True,
+            "use_rotary_embeddings": False,
+            "manual_path": manual_path,
+            "sdpa_path": sdpa_path,
+            "output_max_absolute_error": output_max_absolute_error,
+            "output_relative_error": output_relative_error,
+            "input_grad_max_absolute_error": input_grad_max_absolute_error,
+            "input_grad_relative_error": input_grad_relative_error,
+            "parameter_grad_relative_error": parameter_gradient_relative_error,
+            "gradient_relative_error": gradient_relative_error,
+            "manual_padding_invariance_error": manual_padding_invariance_error,
+            "sdpa_padding_invariance_error": sdpa_padding_invariance_error,
+            "padding_invariance_error_limit": PADDING_INVARIANCE_ERROR_LIMIT,
+            "passed": passed,
         }
 
     def _run_case(self, name, sequence_length, batch_size, padded):
@@ -230,7 +364,7 @@ class SDPAEquivalenceTest:
         return result
 
     def run(self):
-        position_ids_non_none = self._test_position_ids_rejected()
+        position_ids_non_none = self._test_position_ids_rejected()  # sdpa-equivalence-test
         cases = (
             ("residue_no_padding", 32, 4, False),
             ("residue_padding", 32, 4, True),
@@ -243,6 +377,14 @@ class SDPAEquivalenceTest:
             if self.device.type == "cuda":
                 torch.cuda.manual_seed_all(self.seed + case_index)
             results[case[0]] = self._run_case(*case)
+
+        # sdpa-equivalence-test:start
+        no_rope_seed = self.seed + len(cases)
+        torch.manual_seed(no_rope_seed)
+        if self.device.type == "cuda":
+            torch.cuda.manual_seed_all(no_rope_seed)
+        no_rope_padding = self._test_no_rope_padding()
+        # sdpa-equivalence-test:end
 
         summary = {
             "seed": self.seed,
@@ -261,16 +403,22 @@ class SDPAEquivalenceTest:
             "add_bias_kv": True,
             "use_rotary_embeddings": True,
             "position_ids": None,
+            # sdpa-equivalence-test:start
             "position_ids_non_none": position_ids_non_none,
+            "no_rope_padding": no_rope_padding,
+            # sdpa-equivalence-test:end
             "tf32_cuda_matmul": torch.backends.cuda.matmul.allow_tf32,
             "tf32_cudnn": torch.backends.cudnn.allow_tf32,
             "output_relative_error_limit": OUTPUT_RELATIVE_ERROR_LIMIT,
             "gradient_relative_error_limit": GRADIENT_RELATIVE_ERROR_LIMIT,
             "cases": results,
+            # sdpa-equivalence-test:start
             "passed": (
                 position_ids_non_none["passed"]
+                and no_rope_padding["passed"]
                 and all(result["passed"] for result in results.values())
             ),
+            # sdpa-equivalence-test:end
         }
         with (self.output_dir / "summary.json").open(
             "w", encoding="utf-8"
@@ -313,6 +461,17 @@ def main():
             f"gradient={result['gradient_relative_error']:.3e}, "
             f"path={result['sdpa_path']}, pass={result['passed']}"
         )
+    # sdpa-equivalence-test:start
+    no_rope_padding = summary["no_rope_padding"]
+    print(
+        "no_rope_padding: "
+        f"output={no_rope_padding['output_relative_error']:.3e}, "
+        f"gradient={no_rope_padding['gradient_relative_error']:.3e}, "
+        f"manual_padding={no_rope_padding['manual_padding_invariance_error']:.3e}, "
+        f"sdpa_padding={no_rope_padding['sdpa_padding_invariance_error']:.3e}, "
+        f"pass={no_rope_padding['passed']}"
+    )
+    # sdpa-equivalence-test:end
     print(f"summary: {args.output_dir / 'summary.json'}")
     if not summary["passed"]:
         raise SystemExit(1)
