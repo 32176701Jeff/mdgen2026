@@ -18,14 +18,17 @@ import uuid
 
 # position-id-rope-interface
 class RotaryEmbeddingWithPositionIds(RotaryEmbedding):
-    """Keep the RoPE call site ready for explicit residue positions.
+    """Keep the RoPE interface ready for future explicit residue positions.
 
-    fair-esm currently derives positions internally with ``arange``.  The
-    explicit IDs are intentionally accepted but not applied yet, so plumbing
-    them through MDGen does not change the existing model numerics.
+    MDGen-2026 r2 retains the upstream ``arange`` behavior. Explicit position
+    semantics require a separate design for gaps, multiple chains, and bias_k.
     """
 
     def forward(self, q, k, position_ids=None):
+        if position_ids is not None:
+            raise NotImplementedError(
+                "Explicit position_ids are not supported in MDGen-2026 r2."
+            )
         return super().forward(q, k)
 
 

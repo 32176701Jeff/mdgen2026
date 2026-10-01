@@ -73,6 +73,42 @@ class SDPAEquivalenceTest:
         }
         np.savez(path, **arrays)
 
+    def _test_position_ids_rejected(self):
+        sequence_length = 8
+        batch_size = 2
+        model_input = torch.randn(
+            sequence_length,
+            batch_size,
+            self.embed_dim,
+            dtype=torch.float32,
+            device=self.device,
+        )
+        position_ids = torch.arange(
+            sequence_length,
+            dtype=torch.long,
+            device=self.device,
+        ).expand(batch_size, -1)
+        modules = dict(zip(("manual", "sdpa"), self._build_modules()))
+        rejected = {}
+        for name, module in modules.items():
+            try:
+                module(
+                    query=model_input,
+                    key=model_input,
+                    value=model_input,
+                    need_weights=False,
+                    position_ids=position_ids,
+                )
+            except NotImplementedError:
+                rejected[name] = True
+            else:
+                rejected[name] = False
+        return {
+            "manual_raises": rejected["manual"],
+            "sdpa_raises": rejected["sdpa"],
+            "passed": all(rejected.values()),
+        }
+
     def _run_case(self, name, sequence_length, batch_size, padded):
         case_dir = self.output_dir / name
         case_dir.mkdir()
@@ -194,6 +230,7 @@ class SDPAEquivalenceTest:
         return result
 
     def run(self):
+        position_ids_non_none = self._test_position_ids_rejected()
         cases = (
             ("residue_no_padding", 32, 4, False),
             ("residue_padding", 32, 4, True),
@@ -224,12 +261,16 @@ class SDPAEquivalenceTest:
             "add_bias_kv": True,
             "use_rotary_embeddings": True,
             "position_ids": None,
+            "position_ids_non_none": position_ids_non_none,
             "tf32_cuda_matmul": torch.backends.cuda.matmul.allow_tf32,
             "tf32_cudnn": torch.backends.cudnn.allow_tf32,
             "output_relative_error_limit": OUTPUT_RELATIVE_ERROR_LIMIT,
             "gradient_relative_error_limit": GRADIENT_RELATIVE_ERROR_LIMIT,
             "cases": results,
-            "passed": all(result["passed"] for result in results.values()),
+            "passed": (
+                position_ids_non_none["passed"]
+                and all(result["passed"] for result in results.values())
+            ),
         }
         with (self.output_dir / "summary.json").open(
             "w", encoding="utf-8"

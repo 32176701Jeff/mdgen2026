@@ -1,5 +1,4 @@
 import argparse
-import json  # position-id-inference-input
 parser = argparse.ArgumentParser()
 parser.add_argument('--sim_ckpt', type=str, default=None, required=True)
 parser.add_argument('--data_dir', type=str, default=None, required=True)
@@ -57,26 +56,18 @@ torch.backends.cudnn.allow_tf32 = False
 os.makedirs(args.out_dir, exist_ok=True)
 
 
-def get_batch(name, seqres, position_ids, num_frames):  # position-id-inference-routing
+def get_batch(name, seqres, num_frames):
     arr = np.lib.format.open_memmap(f'{args.data_dir}/{name}{args.suffix}.npy', 'r')
 
     if not args.tps: # else keep all frames
         arr = arr[0:1]
     arr = np.array(arr, dtype=np.float32, copy=True)  # fp32-data-pipeline
 
-    # position-id-inference-routing:start
-    position_ids = torch.as_tensor(position_ids, dtype=torch.long)
-    if position_ids.ndim != 1 or len(position_ids) != len(seqres):
-        raise ValueError(
-            f'{name}: seqres length {len(seqres)} does not match '
-            f'position_ids shape {tuple(position_ids.shape)}'
-        )
     if arr.shape[1] != len(seqres):
         raise ValueError(
             f'{name}: NPY residue count {arr.shape[1]} does not match '
-            f'CSV seqres/position_ids length {len(seqres)}'
+            f'CSV seqres length {len(seqres)}'
         )
-    # position-id-inference-routing:end
 
     frames = atom14_to_frames(torch.from_numpy(arr))
     seqres = torch.tensor([restype_order[c] for c in seqres])
@@ -88,7 +79,6 @@ def get_batch(name, seqres, position_ids, num_frames):  # position-id-inference-
         return {
             'atom37': atom37,
             'seqres': seqres,
-            'position_ids': position_ids,  # position-id-inference-routing
             'mask': restype_atom37_mask[seqres],
         }
         
@@ -99,7 +89,6 @@ def get_batch(name, seqres, position_ids, num_frames):  # position-id-inference-
         'trans': frames._trans,
         'rots': frames._rots._rot_mats,
         'seqres': seqres,
-        'position_ids': position_ids,  # position-id-inference-routing
         'mask': mask, # (L,)
     }
 
@@ -111,7 +100,6 @@ def rollout(model, batch):
         expanded_batch = {
             'atom37': batch['atom37'].expand(-1, args.num_frames, -1, -1, -1),
             'seqres': batch['seqres'],
-            'position_ids': batch['position_ids'],  # position-id-inference-routing
             'mask': batch['mask'],
         }
     else:    
@@ -121,7 +109,6 @@ def rollout(model, batch):
             'trans': batch['trans'].expand(-1, args.num_frames, -1, -1),
             'rots': batch['rots'].expand(-1, args.num_frames, -1, -1, -1),
             'seqres': batch['seqres'],
-            'position_ids': batch['position_ids'],  # position-id-inference-routing
             'mask': batch['mask'],
         }
     atom14, _ = model.inference(expanded_batch)
@@ -145,11 +132,9 @@ def rollout(model, batch):
     return atom14, new_batch
     
     
-def do(model, name, seqres, position_ids):  # position-id-inference-routing
+def do(model, name, seqres):
 
-    item = get_batch(
-        name, seqres, position_ids, num_frames=model.args.num_frames  # position-id-inference-routing
-    )
+    item = get_batch(name, seqres, num_frames=model.args.num_frames)
     batch = next(iter(torch.utils.data.DataLoader([item])))
 
     batch = tensor_tree_map(lambda x: x.cuda(), batch)  
@@ -187,13 +172,7 @@ def main():
         if args.pdb_id and name not in args.pdb_id:
             continue
         seqres = df.seqres[name]
-        # position-id-inference-input:start
-        if 'position_ids' in df.columns:
-            position_ids = json.loads(df.position_ids[name])
-        else:
-            position_ids = list(range(len(seqres)))
-        # position-id-inference-input:end
-        do(model, name, seqres, position_ids)  # position-id-inference-routing
+        do(model, name, seqres)
         
 
 main()
