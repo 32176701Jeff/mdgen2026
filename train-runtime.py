@@ -249,11 +249,7 @@ class ExecutionTimeCallback(pl.Callback):
 
 pl.seed_everything(args.train_seed, workers=True)  # seed-initialization
 
-torch.set_float32_matmul_precision('highest')  # fp32-matmul-precision
-# fp32-disable-tf32:start
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.backends.cudnn.allow_tf32 = False
-# fp32-disable-tf32:end
+torch.set_float32_matmul_precision('medium')  # fp32-matmul-precision
 
 if args.wandb:
     wandb.init(

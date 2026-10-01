@@ -321,10 +321,7 @@ def main():
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     torch.use_deterministic_algorithms(True)
-    torch.set_float32_matmul_precision("highest")
     torch.backends.cudnn.benchmark = False
-    torch.backends.cuda.matmul.allow_tf32 = False
-    torch.backends.cudnn.allow_tf32 = False
 
     device = torch.device("cuda", torch.cuda.current_device())
     model = NewMDGenWrapper.load_from_checkpoint(

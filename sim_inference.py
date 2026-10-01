@@ -46,11 +46,6 @@ import pandas as pd
 seed_everything(args.inference_seed, workers=True)  # seed-initialization
 torch.use_deterministic_algorithms(args.deterministic)  # deterministic-execution
 torch.backends.cudnn.benchmark = args.benchmark  # deterministic-benchmark-guard
-torch.set_float32_matmul_precision('highest')  # fp32-matmul-precision
-# fp32-disable-tf32:start
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.backends.cudnn.allow_tf32 = False
-# fp32-disable-tf32:end
 
 
 os.makedirs(args.out_dir, exist_ok=True)
