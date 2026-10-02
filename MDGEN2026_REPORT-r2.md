@@ -89,6 +89,7 @@
 | `sim_inference.py` | `sdpa-route`（r1 已存在；r2 修改並保留） | 將 `--use_sdpa` 改為 `--manual_attention`；checkpoint 預設以 SDPA 路徑載入。 |
 | `tps_inference.py`、`design_inference.py`、`upsampling_inference.py` | `sdpa-route`（r2 新增） | 三個入口新增 `--manual_attention`，並把對應的 `use_sdpa` 值傳入 `NewMDGenWrapper.load_from_checkpoint()`。 |
 | `tps_inference.py`、`design_inference.py`、`upsampling_inference.py` | `runtime-compatibility`（r2 新增） | checkpoint 載入補上 `weights_only=False`，支援新版 PyTorch 載入舊 Lightning checkpoint。 |
+| `train.py`、`train-runtime.py` | `runtime-compatibility`（r2 新增） | Trainer 的 validate／fit checkpoint 載入明確使用 `weights_only=False`，避免 PyTorch ≥ 2.6 無法讀取含 `argparse.Namespace` 的可信任舊 Lightning checkpoint。 |
 | `benchmark_l_scaling.py` | `sdpa-route`（r2 新增） | 將 `--use_sdpa` 改為 `--manual_attention`；預設量測 SDPA，加 flag 才量測 manual。 |
 
 A/B 指令規則同步更新：SDPA 組不帶 attention flag；manual 組明確加入 `--manual_attention`。因此 C2／C6 等 SDPA 指令移除 `--use_sdpa`，C5 等 manual 指令新增 `--manual_attention`；A4 manual 組加 flag、SDPA 組不帶 flag；A6 manual inference 加 flag、SDPA inference 不帶 flag。`test_sdpa.py` 仍在程式內明確建立 manual 與 SDPA 兩組，不依賴 CLI 預設值，因此不需修改。
@@ -129,6 +130,18 @@ A/B 指令規則同步更新：SDPA 組不帶 attention flag；manual 組明確�
 
 上游基準已確認：commit `642b95b4740ef889167f433a9155d6ed34ee6a70` 的 `mha.py` 與目前 `upstream/master` 對應檔案相同；`mha_legacy.py` 去除新增來源檔頭並忽略檔尾換行後，與該固定 commit 內容一致。測試維持 output relative error `< 1e-5`、gradient relative error `< 1e-4`；實際 CPU／CUDA 結果與輸出 JSON 待在安裝 PyTorch／ESM 的目標環境執行 `test_sdpa.py` 後補入。
 
+### M12 — 新增 PyEMMA runtime YAML
+
+處置：程式環境檔修改完成，從零建立與 import 驗證待執行。`tps_inference.py` 與 `design_inference.py` 會經由 `mdgen.analysis` 匯入 PyEMMA；原 cu126／cu130 YAML 未包含此套件，造成正式入口在載入 checkpoint 前即出現 `ModuleNotFoundError: No module named 'pyemma'`。為保留 r1 環境定義與歷史結果的可重現性，原本兩份 YAML 不修改；r2 另建 `-pyemma.yml` 版本，加入 PyEMMA 及其實際解析到的相關依賴，避免環境建立後再手動補裝。
+
+| file_path | block_name | 說明改動 |
+|---|---|---|
+| `my_new/environment-mdgen2026-cu126.yml`、`my_new/environment-mdgen2026-cu130.yml` | —（r1 原檔保留） | 不加入 PyEMMA，不改動既有內容，保留為 r1 環境與既有結果的重現依據。 |
+| `my_new/environment-mdgen2026-cu126-pyemma.yml` | `runtime-environment`（r2 新增） | 以原 cu126 YAML 為基礎，新增 `pyemma==2.5.12`，並固定 `deeptime==0.4.5`、`dill==0.4.1`、`multiprocess==0.70.19`、`pathos==0.3.5`、`pox==0.3.7`、`ppft==1.7.8`。 |
+| `my_new/environment-mdgen2026-cu130-pyemma.yml` | `runtime-environment`（r2 新增） | 以原 cu130 YAML 為基礎加入相同的 PyEMMA dependency set；CUDA／PyTorch wheel 仍維持 cu130 設定。 |
+
+驗證計畫：先由兩份 `-pyemma.yml` 分別建立全新的 `mdgen2026-r2-a6-cu126` 與 `mdgen2026-r2-a6-cu130` 環境，再於兩套環境輸出 PyTorch、CUDA、Lightning、PyEMMA 與 deeptime 版本。後續所有 C21–C38 都只使用這兩套新建環境，確保 r2 測試結果和提交的 PyEMMA YAML 一致；r1 結果仍對應未修改的原 YAML。
+
 ## 5. 執行 code 與執行結果
 
 ### 5.1 執行項目
@@ -137,14 +150,14 @@ A/B 指令規則同步更新：SDPA 組不帶 attention flag；manual 組明確�
 
 | 執行編號 | 對應老師要求／原始案例 | 執行內容 | 執行結果 |
 |---|---|---|---|
-| C19 | M2／重跑 r1 C2 | cu126、SDPA、GC off，在 `medium`、非 deterministic 下重量 sec/step | 待執行 |
-| C20 | M2／重跑 r1 C5 | cu126、Manual、GC on，在相同條件下重量 sec/step | 待執行 |
-| C21 | M2／重跑 r1 C6 | cu126、SDPA、GC on，在相同條件下重量 sec/step | 待執行 |
-| C22 | M4／重跑 C14 | 從 YAML 建立全新的 cu126 conda 環境並保存建立 log | 待執行 |
-| C23 | M4／重跑 C15 | 在全新環境檢查 import、套件版本、CUDA 與 GPU | 待執行 |
-| C24 | M4／重跑 C16 | 在全新環境執行預設 SDPA 的 10-step training smoke test | 待執行 |
-| C25 | M4／重跑 C17 | 執行 Manual inference 並產生 PDB | 待執行 |
-| C26 | M4／重跑 C18；M8 sim 入口 | 執行預設 SDPA inference，載入 `atlas.ckpt` 並產生 PDB | 待執行 |
+| C19 | M12；M4／重跑 r1 C14 | 分別由兩份 `-pyemma.yml` 建立全新的 cu126 與 cu130 conda 環境 | 待執行 |
+| C20 | M12；M4／重跑 r1 C15 | 在兩套全新環境檢查 import、PyEMMA、套件版本、CUDA 與 GPU | 待執行 |
+| C21 | M2／重跑 r1 C2 | cu126、SDPA、GC off，在 `medium`、非 deterministic 下量測 sec/step | 待執行 |
+| C22 | M2／重跑 r1 C5 | cu126、Manual、GC on，在相同條件下量測 sec/step | 待執行 |
+| C23 | M2／重跑 r1 C6 | cu126、SDPA、GC on，在相同條件下量測 sec/step | 待執行 |
+| C24 | M4／重跑 r1 C16 | 在全新環境執行預設 SDPA 的 10-step training smoke test | 待執行 |
+| C25 | M4／重跑 r1 C17 | 執行 Manual inference 並產生 PDB | 待執行 |
+| C26 | M4／重跑 r1 C18；M8 sim 入口 | 執行預設 SDPA inference，載入 `atlas.ckpt` 並產生 PDB | 待執行 |
 | C27 | M7 | 檢查並回報 ATLAS NPY 實際包含 250 或 251 frames | 待執行 |
 | C28 | M8／train 入口 | 執行 `train.py`，確認能載入 `atlas.ckpt` 且預設使用 SDPA | 待執行 |
 | C29 | M8／TPS 入口 | 執行 `tps_inference.py`，確認能載入 `atlas.ckpt` 且預設使用 SDPA | 待執行 |
@@ -169,12 +182,48 @@ cd /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026
 mkdir -p my_new/r2
 ```
 
-### C19 — M2／重跑 C2
+### C19 — M12；建立最終 cu126／cu130 環境
 
-SDPA 是 r2 預設路徑，因此不帶 attention flag。M2 只要求重量 sec/step，不重測 peak memory。
+先建立兩套最終環境，後續測試不再使用舊的 `mdgen2026` 或 `mdgen2026-cu130`。兩個 `conda env create` 是 C19 的兩個子步驟；各自保存 log，任一建立失敗都先停止，不繼續後面的測試。
 
 ```bash
-conda activate mdgen2026
+conda env create \
+  --name mdgen2026-r2-a6-cu126 \
+  --file my_new/environment-mdgen2026-cu126-pyemma.yml \
+  2>&1 | tee my_new/r2/C19_M12-cu126-conda-create.log
+
+conda env create \
+  --name mdgen2026-r2-a6-cu130 \
+  --file my_new/environment-mdgen2026-cu130-pyemma.yml \
+  2>&1 | tee my_new/r2/C19_M12-cu130-conda-create.log
+```
+
+執行結果：待執行。
+
+### C20 — M12；兩套環境 import／版本確認
+
+兩個輸出都必須顯示 `import mdgen: PASS`、`import pyemma: PASS`，且 cu126／cu130 的 `torch CUDA` 分別為 12.6／13.0。
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+
+python -c "import torch; import pytorch_lightning as pl; import pyemma; import deeptime; import mdgen; print('torch:', torch.__version__); print('torch CUDA:', torch.version.cuda); print('Lightning:', pl.__version__); print('PyEMMA:', pyemma.__version__); print('deeptime:', deeptime.__version__); print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else None); print('import mdgen: PASS'); print('import pyemma: PASS')" \
+  2>&1 | tee my_new/r2/C20_M12-cu126-import-version.log
+
+conda activate mdgen2026-r2-a6-cu130
+
+python -c "import torch; import pytorch_lightning as pl; import pyemma; import deeptime; import mdgen; print('torch:', torch.__version__); print('torch CUDA:', torch.version.cuda); print('Lightning:', pl.__version__); print('PyEMMA:', pyemma.__version__); print('deeptime:', deeptime.__version__); print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else None); print('import mdgen: PASS'); print('import pyemma: PASS')" \
+  2>&1 | tee my_new/r2/C20_M12-cu130-import-version.log
+```
+
+執行結果：待執行。
+
+### C21 — M2／重跑 r1 C2
+
+SDPA 是 r2 預設路徑，因此不帶 attention flag。M2 只要求量測 sec/step，不重測 peak memory。
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
 
 python train-runtime.py \
   --sim_condition \
@@ -193,18 +242,18 @@ python train-runtime.py \
   --train_batches 1 \
   --no_validate \
   --ckpt_freq 999 \
-  --run_name C19-M2-C2-sdpa-gc-off \
+  --run_name C21-M2-C2-sdpa-gc-off \
   --model_dir workdir \
-  --execution_time my_new/r2/C19_M2-C2-time.json \
-  2>&1 | tee my_new/r2/C19_M2-C2-run.log
+  --execution_time my_new/r2/C21_M2-C2-time.json \
+  2>&1 | tee my_new/r2/C21_M2-C2-run.log
 ```
 
 執行結果：待執行。
 
-### C20 — M2／重跑 C5
+### C22 — M2／重跑 r1 C5
 
 ```bash
-conda activate mdgen2026
+conda activate mdgen2026-r2-a6-cu126
 
 python train-runtime.py \
   --sim_condition \
@@ -225,18 +274,18 @@ python train-runtime.py \
   --train_batches 1 \
   --no_validate \
   --ckpt_freq 999 \
-  --run_name C20-M2-C5-manual-gc-on \
+  --run_name C22-M2-C5-manual-gc-on \
   --model_dir workdir \
-  --execution_time my_new/r2/C20_M2-C5-time.json \
-  2>&1 | tee my_new/r2/C20_M2-C5-run.log
+  --execution_time my_new/r2/C22_M2-C5-time.json \
+  2>&1 | tee my_new/r2/C22_M2-C5-run.log
 ```
 
 執行結果：待執行。
 
-### C21 — M2／重跑 C6
+### C23 — M2／重跑 r1 C6
 
 ```bash
-conda activate mdgen2026
+conda activate mdgen2026-r2-a6-cu126
 
 python train-runtime.py \
   --sim_condition \
@@ -256,39 +305,15 @@ python train-runtime.py \
   --train_batches 1 \
   --no_validate \
   --ckpt_freq 999 \
-  --run_name C21-M2-C6-sdpa-gc-on \
+  --run_name C23-M2-C6-sdpa-gc-on \
   --model_dir workdir \
-  --execution_time my_new/r2/C21_M2-C6-time.json \
-  2>&1 | tee my_new/r2/C21_M2-C6-run.log
+  --execution_time my_new/r2/C23_M2-C6-time.json \
+  2>&1 | tee my_new/r2/C23_M2-C6-run.log
 ```
 
 執行結果：待執行。
 
-### C22 — M4／重跑 C14
-
-此環境名稱專供 r2 A6 驗收，避免誤用已安裝過額外套件的舊環境。
-
-```bash
-conda env create \
-  --name mdgen2026-r2-a6-cu126 \
-  --file my_new/environment-mdgen2026-cu126.yml \
-  2>&1 | tee my_new/r2/C22_M4-C14-conda-create.log
-```
-
-執行結果：待執行。
-
-### C23 — M4／重跑 C15
-
-```bash
-conda activate mdgen2026-r2-a6-cu126
-
-python -c "import torch; import pytorch_lightning as pl; import mdgen; print('torch:', torch.__version__); print('torch CUDA:', torch.version.cuda); print('Lightning:', pl.__version__); print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else None); print('import mdgen: PASS')" \
-  2>&1 | tee my_new/r2/C23_M4-C15-import-version.log
-```
-
-執行結果：待執行。
-
-### C24 — M4／重跑 C16
+### C24 — M4／重跑 r1 C16
 
 未帶 `--manual_attention`，因此預設走 SDPA。`epochs=10` 且每個 epoch 限制一個 training batch，共執行 10 steps。
 
@@ -319,7 +344,7 @@ python train.py \
 
 執行結果：待執行。
 
-### C25 — M4／重跑 C17
+### C25 — M4／重跑 r1 C17
 
 ```bash
 conda activate mdgen2026-r2-a6-cu126
@@ -342,7 +367,7 @@ python sim_inference.py \
 
 執行結果：待執行。
 
-### C26 — M4／重跑 C18；M8 sim 入口
+### C26 — M4／重跑 r1 C18；M8 sim 入口
 
 ```bash
 conda activate mdgen2026-r2-a6-cu126
@@ -367,7 +392,7 @@ python sim_inference.py \
 ### C27 — M7／ATLAS frame 數量
 
 ```bash
-conda activate mdgen2026
+conda activate mdgen2026-r2-a6-cu126
 
 python -c "import collections, glob, numpy as np; files=sorted(glob.glob('data/npy/*.npy')); rows=[(path, np.lib.format.open_memmap(path, mode='r').shape) for path in files]; [print(path, shape) for path, shape in rows]; print('frame_count_summary:', dict(collections.Counter(shape[0] for _, shape in rows)))" \
   2>&1 | tee my_new/r2/C27_M7-frame-count.log
@@ -459,7 +484,7 @@ python upsampling_inference.py \
 ### C32 — M11；涵蓋 M1、M3
 
 ```bash
-conda activate mdgen2026
+conda activate mdgen2026-r2-a6-cu126
 
 python test_sdpa.py \
   --device cuda \
@@ -473,7 +498,7 @@ python test_sdpa.py \
 ### C33 — §3-1 cu126 `eigh`
 
 ```bash
-conda activate mdgen2026
+conda activate mdgen2026-r2-a6-cu126
 
 python - <<'PY' 2>&1 | tee my_new/r2/C33_section3-1-eigh-cu126.log
 import torch
@@ -515,7 +540,7 @@ PY
 ### C34 — §3-1 cu130 `eigh`
 
 ```bash
-conda activate mdgen2026-cu130
+conda activate mdgen2026-r2-a6-cu130
 
 python - <<'PY' 2>&1 | tee my_new/r2/C34_section3-1-eigh-cu130.log
 import torch
@@ -559,7 +584,7 @@ PY
 此環境變數必須在啟動 Python 前設定。
 
 ```bash
-conda activate mdgen2026-cu130
+conda activate mdgen2026-r2-a6-cu130
 
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 python - <<'PY' 2>&1 | tee my_new/r2/C35_section3-2-eigh-cu130-expandable.log
@@ -604,7 +629,7 @@ PY
 以下 wrapper 不修改 repo code，只在執行 `train-runtime.py` 前後開啟 CUDA memory history。C36 只跑一個 training step，以涵蓋 `prep_batch`、`eigh`、model forward 與 backward 的記憶體配置。
 
 ```bash
-conda activate mdgen2026
+conda activate mdgen2026-r2-a6-cu126
 
 python - \
   --sim_condition \
@@ -646,7 +671,7 @@ PY
 ### C37 — E2／cu130 Manual A4
 
 ```bash
-conda activate mdgen2026-cu130
+conda activate mdgen2026-r2-a6-cu130
 
 CUBLAS_WORKSPACE_CONFIG=:4096:8 \
 python benchmark_l_scaling.py \
@@ -665,7 +690,7 @@ python benchmark_l_scaling.py \
 ### C38 — E2／cu130 SDPA A4
 
 ```bash
-conda activate mdgen2026-cu130
+conda activate mdgen2026-r2-a6-cu130
 
 CUBLAS_WORKSPACE_CONFIG=:4096:8 \
 python benchmark_l_scaling.py \
