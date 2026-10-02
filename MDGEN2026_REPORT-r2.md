@@ -63,3 +63,15 @@
 | `benchmark_l_scaling.py` | `seed-deterministic-args`、`seed-initialization`、`deterministic-execution`（r2 新增） | `--seed` 預設改為 `None`，新增預設關閉的 `--deterministic`；輸出 JSON 記錄實際設定。需要重現 A4 時明確傳入 `--seed 137 --deterministic`。 |
 
 `CUBLAS_WORKSPACE_CONFIG`回覆：先前未主動設定此環境變數，repo 與既有執行指令亦未設定；先前執行未遇到要求該設定的 cuBLAS deterministic 錯誤。r2 的一般執行預設不啟用 deterministic algorithms，因此不要求設定；未來若明確執行 deterministic CUDA 測試，將於啟動 Python 前設定並記錄實際值。
+
+### M6 — NPY dtype 選項
+
+處置：程式修改完成，cluster runtime 驗證待執行。前處理輸出的 NPY 預設恢復為上游使用的 float16，使 ATLAS 資料量化方式與 `atlas.ckpt` 的訓練條件一致；需要較大座標範圍的 Piezo1、膜蛋白或 ligand 系統可明確選擇 float32。這只調整 NPY 的儲存 dtype；training dataset 現有程式會在讀取後轉為 float32，模型運算 dtype 不變。
+
+| file_path | block_name | 說明改動 |
+|---|---|---|
+| `scripts/prep_sims.py` | `fp32-data-pipeline`（r1 已存在；r2 刪除） | 移除固定使用 `np.float32` 建立 NPY 的設定。 |
+| `scripts/prep_sims.py` | `npy-dtype-option`（r2 新增） | 新增 `--dtype {float16,float32}`，預設 `float16`；依選項決定輸出 NPY dtype。 |
+| `sim_inference.py` | `fp32-data-pipeline`（r1 已存在；r2 刪除） | 移除無條件將完整輸入複製成 float32 的處理，恢復上游行為：一般 inference 複製第一個 frame 並轉為 float32，TPS 路徑保留原始 memmap 與 dtype。 |
+
+驗證計畫：分別以預設設定與 `--dtype float32` 產生小型 NPY，確認輸出 dtype 為 float16／float32；再各執行一次一般 inference 與 TPS smoke test，確認一般 inference 使用 float32 複本，而 TPS 不複製完整 trajectory。M6 依老師要求獨立 commit。

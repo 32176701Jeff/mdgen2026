@@ -58,8 +58,7 @@ def get_batch(name, seqres, num_frames):
     arr = np.lib.format.open_memmap(f'{args.data_dir}/{name}{args.suffix}.npy', 'r')
 
     if not args.tps: # else keep all frames
-        arr = arr[0:1]
-    arr = np.array(arr, dtype=np.float32, copy=True)  # fp32-data-pipeline
+        arr = np.copy(arr[0:1]).astype(np.float32)
 
     if arr.shape[1] != len(seqres):
         raise ValueError(

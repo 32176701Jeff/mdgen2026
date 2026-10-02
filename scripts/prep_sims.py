@@ -8,6 +8,13 @@ parser.add_argument('--num_workers', type=int, default=1)
 parser.add_argument('--suffix', type=str, default='')
 parser.add_argument('--atlas', action='store_true')
 parser.add_argument('--stride', type=int, default=1)
+# npy-dtype-option:start
+parser.add_argument(
+    '--dtype',
+    choices=('float16', 'float32'),
+    default='float16',
+)
+# npy-dtype-option:end
 args = parser.parse_args()
 
 import mdtraj, os, tqdm
@@ -52,7 +59,7 @@ def main():
 
 
 def traj_to_atom14(traj):
-    arr = np.zeros((traj.n_frames, traj.n_residues, 14, 3), dtype=np.float32)  # fp32-data-pipeline
+    arr = np.zeros((traj.n_frames, traj.n_residues, 14, 3), dtype=np.dtype(args.dtype))  # npy-dtype-option
     for i, resi in enumerate(traj.top.residues):
         for at in resi.atoms:
             if at.name not in rc.restype_name_to_atom14_names[resi.name]:
