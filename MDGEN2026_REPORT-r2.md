@@ -128,3 +128,555 @@ A/B 指令規則同步更新：SDPA 組不帶 attention flag；manual 組明確�
 | `test_sdpa.py` | `sdpa-equivalence-test`（r1 已存在；r2 修改並保留） | 新增目前版本的 manual／SDPA 建構函式，使 `position_ids` 非 `None` 的 regression case 仍明確檢查兩條 r2 路徑皆拋出 `NotImplementedError`。 |
 
 上游基準已確認：commit `642b95b4740ef889167f433a9155d6ed34ee6a70` 的 `mha.py` 與目前 `upstream/master` 對應檔案相同；`mha_legacy.py` 去除新增來源檔頭並忽略檔尾換行後，與該固定 commit 內容一致。測試維持 output relative error `< 1e-5`、gradient relative error `< 1e-4`；實際 CPU／CUDA 結果與輸出 JSON 待在安裝 PyTorch／ESM 的目標環境執行 `test_sdpa.py` 後補入。
+
+## 5. 執行 code 與執行結果
+
+### 5.1 執行項目
+
+本節延續 r1 的 C1–C18 編號。C19 起代表使用 r2 code 執行的新結果；若是重量既有案例，保留原始案例編號供對照，但不覆寫 r1 的輸出。
+
+| 執行編號 | 對應老師要求／原始案例 | 執行內容 | 執行結果 |
+|---|---|---|---|
+| C19 | M2／重跑 r1 C2 | cu126、SDPA、GC off，在 `medium`、非 deterministic 下重量 sec/step | 待執行 |
+| C20 | M2／重跑 r1 C5 | cu126、Manual、GC on，在相同條件下重量 sec/step | 待執行 |
+| C21 | M2／重跑 r1 C6 | cu126、SDPA、GC on，在相同條件下重量 sec/step | 待執行 |
+| C22 | M4／重跑 C14 | 從 YAML 建立全新的 cu126 conda 環境並保存建立 log | 待執行 |
+| C23 | M4／重跑 C15 | 在全新環境檢查 import、套件版本、CUDA 與 GPU | 待執行 |
+| C24 | M4／重跑 C16 | 在全新環境執行預設 SDPA 的 10-step training smoke test | 待執行 |
+| C25 | M4／重跑 C17 | 執行 Manual inference 並產生 PDB | 待執行 |
+| C26 | M4／重跑 C18；M8 sim 入口 | 執行預設 SDPA inference，載入 `atlas.ckpt` 並產生 PDB | 待執行 |
+| C27 | M7 | 檢查並回報 ATLAS NPY 實際包含 250 或 251 frames | 待執行 |
+| C28 | M8／train 入口 | 執行 `train.py`，確認能載入 `atlas.ckpt` 且預設使用 SDPA | 待執行 |
+| C29 | M8／TPS 入口 | 執行 `tps_inference.py`，確認能載入 `atlas.ckpt` 且預設使用 SDPA | 待執行 |
+| C30 | M8／design 入口 | 執行 `design_inference.py`，確認能載入 `atlas.ckpt` 且預設使用 SDPA | 待執行 |
+| C31 | M8／upsampling 入口 | 執行 `upsampling_inference.py`，確認能載入 `atlas.ckpt` 且預設使用 SDPA | 待執行 |
+| C32 | M11；涵蓋 M1、M3 | 執行新版 `test_sdpa.py` 的上游基準、full-row padding、no-RoPE padding 與 position IDs 案例 | 待執行 |
+| C33 | §3-1／cu126 | 對 `(64000,4,4)`、`(128000,4,4)` 執行 `torch.linalg.eigh` 並記錄 peak memory | 待執行 |
+| C34 | §3-1／cu130 | 在 cu130 對相同兩種 shape 執行 `eigh` | 待執行 |
+| C35 | §3-2／cu130 | 設定 `expandable_segments:True` 後重跑 cu130 `eigh` | 待執行 |
+| C36 | §3-3／原始 C2 設定 | 執行 cu126、B=1、SDPA、GC off，記錄 CUDA memory history 與 snapshot | 待執行 |
+| C37 | E2／對應 r1 C12 | 在 cu130 執行 Manual A4 L-scaling | 待執行 |
+| C38 | E2／對應 r1 C13 | 在 cu130 執行 SDPA A4 L-scaling | 待執行 |
+
+E1 是確認既有 cu126／cu130 T4 輸出是否由兩次獨立執行產生；E3 是依既有 C9–C11 與本節 §3 結果補上 max feasible batch size，因此不另編新的執行編號。
+
+### 5.2 共通準備
+
+以下指令假設 cluster repo 路徑與 r1 相同。每項測試的輸出統一放在 `my_new/r2/`，檔名保留新的執行編號與對應要求。
+
+```bash
+cd /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026
+mkdir -p my_new/r2
+```
+
+### C19 — M2／重跑 C2
+
+SDPA 是 r2 預設路徑，因此不帶 attention flag。M2 只要求重量 sec/step，不重測 peak memory。
+
+```bash
+conda activate mdgen2026
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --no-deterministic \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C19-M2-C2-sdpa-gc-off \
+  --model_dir workdir \
+  --execution_time my_new/r2/C19_M2-C2-time.json \
+  2>&1 | tee my_new/r2/C19_M2-C2-run.log
+```
+
+執行結果：待執行。
+
+### C20 — M2／重跑 C5
+
+```bash
+conda activate mdgen2026
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --no-deterministic \
+  --manual_attention \
+  --grad_checkpointing \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C20-M2-C5-manual-gc-on \
+  --model_dir workdir \
+  --execution_time my_new/r2/C20_M2-C5-time.json \
+  2>&1 | tee my_new/r2/C20_M2-C5-run.log
+```
+
+執行結果：待執行。
+
+### C21 — M2／重跑 C6
+
+```bash
+conda activate mdgen2026
+
+python train-runtime.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --no-deterministic \
+  --grad_checkpointing \
+  --epochs 105 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C21-M2-C6-sdpa-gc-on \
+  --model_dir workdir \
+  --execution_time my_new/r2/C21_M2-C6-time.json \
+  2>&1 | tee my_new/r2/C21_M2-C6-run.log
+```
+
+執行結果：待執行。
+
+### C22 — M4／重跑 C14
+
+此環境名稱專供 r2 A6 驗收，避免誤用已安裝過額外套件的舊環境。
+
+```bash
+conda env create \
+  --name mdgen2026-r2-a6-cu126 \
+  --file my_new/environment-mdgen2026-cu126.yml \
+  2>&1 | tee my_new/r2/C22_M4-C14-conda-create.log
+```
+
+執行結果：待執行。
+
+### C23 — M4／重跑 C15
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+
+python -c "import torch; import pytorch_lightning as pl; import mdgen; print('torch:', torch.__version__); print('torch CUDA:', torch.version.cuda); print('Lightning:', pl.__version__); print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else None); print('import mdgen: PASS')" \
+  2>&1 | tee my_new/r2/C23_M4-C15-import-version.log
+```
+
+執行結果：待執行。
+
+### C24 — M4／重跑 C16
+
+未帶 `--manual_attention`，因此預設走 SDPA。`epochs=10` 且每個 epoch 限制一個 training batch，共執行 10 steps。
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+
+python train.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --no-deterministic \
+  --epochs 10 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C24-M4-C16-sdpa-smoke \
+  --model_dir workdir \
+  2>&1 | tee my_new/r2/C24_M4-C16-run.log
+```
+
+執行結果：待執行。
+
+### C25 — M4／重跑 C17
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+
+python sim_inference.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --data_dir data/npy \
+  --split data/proteins-mdgen2026.csv \
+  --pdb_id 1a62_A \
+  --suffix _R1 \
+  --num_frames 250 \
+  --num_rollouts 1 \
+  --inference_seed 137 \
+  --manual_attention \
+  --out_dir my_new/r2/C25_M4-C17-manual \
+  2>&1 | tee my_new/r2/C25_M4-C17-run.log
+```
+
+預期輸出 PDB：`my_new/r2/C25_M4-C17-manual/1a62_A.pdb`。
+
+執行結果：待執行。
+
+### C26 — M4／重跑 C18；M8 sim 入口
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+
+python sim_inference.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --data_dir data/npy \
+  --split data/proteins-mdgen2026.csv \
+  --pdb_id 1a62_A \
+  --suffix _R1 \
+  --num_frames 250 \
+  --num_rollouts 1 \
+  --inference_seed 137 \
+  --out_dir my_new/r2/C26_M4-C18-sdpa \
+  2>&1 | tee my_new/r2/C26_M4-C18-run.log
+```
+
+預期輸出 PDB：`my_new/r2/C26_M4-C18-sdpa/1a62_A.pdb`。
+
+執行結果：待執行。
+
+### C27 — M7／ATLAS frame 數量
+
+```bash
+conda activate mdgen2026
+
+python -c "import collections, glob, numpy as np; files=sorted(glob.glob('data/npy/*.npy')); rows=[(path, np.lib.format.open_memmap(path, mode='r').shape) for path in files]; [print(path, shape) for path, shape in rows]; print('frame_count_summary:', dict(collections.Counter(shape[0] for _, shape in rows)))" \
+  2>&1 | tee my_new/r2/C27_M7-frame-count.log
+```
+
+執行結果：待執行。
+
+### C28 — M8 train 入口
+
+使用 `train.py --validate` 讓正式 training 入口載入 `atlas.ckpt` 並執行一個 validation batch；未帶 `--manual_attention`，因此模型預設使用 SDPA。
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+
+python train.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --validate \
+  --val_batches 1 \
+  --ckpt ckpt/atlas.ckpt \
+  --run_name C28-M8-train-entry \
+  --model_dir workdir \
+  2>&1 | tee my_new/r2/C28_M8-train-entry.log
+```
+
+執行結果：待執行。
+
+### C29–C31 共通空 split
+
+`atlas.ckpt` 是 forward-simulation checkpoint，和 TPS、design、upsampling 的完整任務輸入不相容。C29–C31 先以空 split 驗證三個正式入口可以成功解析參數並載入 `atlas.ckpt`；SDPA 實際執行路徑由 C26 與 C32 驗證。
+
+```bash
+python -c "from pathlib import Path; Path('my_new/r2/M8-empty.csv').write_text('name,seqres\n', encoding='utf-8')"
+```
+
+### C29 — M8 TPS 入口
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+
+python tps_inference.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --data_dir data/npy \
+  --split my_new/r2/M8-empty.csv \
+  --out_dir my_new/r2/C29_M8-tps-load \
+  2>&1 | tee my_new/r2/C29_M8-tps-load.log
+```
+
+執行結果：待執行。
+
+### C30 — M8 design 入口
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+
+python design_inference.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --data_dir data/npy \
+  --split my_new/r2/M8-empty.csv \
+  --out_dir my_new/r2/C30_M8-design-load \
+  2>&1 | tee my_new/r2/C30_M8-design-load.log
+```
+
+執行結果：待執行。
+
+### C31 — M8 upsampling 入口
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+
+python upsampling_inference.py \
+  --ckpt ckpt/atlas.ckpt \
+  --data_dir data/npy \
+  --split my_new/r2/M8-empty.csv \
+  --out_dir my_new/r2/C31_M8-upsampling-load \
+  2>&1 | tee my_new/r2/C31_M8-upsampling-load.log
+```
+
+執行結果：待執行。
+
+### C32 — M11；涵蓋 M1、M3
+
+```bash
+conda activate mdgen2026
+
+python test_sdpa.py \
+  --device cuda \
+  --seed 137 \
+  --output_dir my_new/r2/C32_M11-regression-cu126 \
+  2>&1 | tee my_new/r2/C32_M11-regression-cu126.log
+```
+
+執行結果：待執行。
+
+### C33 — §3-1 cu126 `eigh`
+
+```bash
+conda activate mdgen2026
+
+python - <<'PY' 2>&1 | tee my_new/r2/C33_section3-1-eigh-cu126.log
+import torch
+
+print('torch:', torch.__version__)
+print('CUDA wheel:', torch.version.cuda)
+print('GPU:', torch.cuda.get_device_name(0))
+
+for n in (64000, 128000):
+    torch.cuda.empty_cache()
+    x = torch.randn((n, 4, 4), device='cuda', dtype=torch.float32)
+    x = (x + x.transpose(-1, -2)) * 0.5
+    torch.cuda.synchronize()
+    baseline = torch.cuda.memory_allocated()
+    torch.cuda.reset_peak_memory_stats()
+    result = None
+    try:
+        result = torch.linalg.eigh(x)
+        torch.cuda.synchronize()
+        status = 'PASS'
+    except Exception as error:
+        torch.cuda.synchronize()
+        status = f'FAIL: {type(error).__name__}: {error}'
+    peak = torch.cuda.max_memory_allocated()
+    print({
+        'shape': [n, 4, 4],
+        'status': status,
+        'baseline_bytes': baseline,
+        'peak_bytes': peak,
+        'eigh_peak_delta_bytes': peak - baseline,
+    })
+    del result, x
+    torch.cuda.empty_cache()
+PY
+```
+
+執行結果：待執行。
+
+### C34 — §3-1 cu130 `eigh`
+
+```bash
+conda activate mdgen2026-cu130
+
+python - <<'PY' 2>&1 | tee my_new/r2/C34_section3-1-eigh-cu130.log
+import torch
+
+print('torch:', torch.__version__)
+print('CUDA wheel:', torch.version.cuda)
+print('GPU:', torch.cuda.get_device_name(0))
+
+for n in (64000, 128000):
+    torch.cuda.empty_cache()
+    x = torch.randn((n, 4, 4), device='cuda', dtype=torch.float32)
+    x = (x + x.transpose(-1, -2)) * 0.5
+    torch.cuda.synchronize()
+    baseline = torch.cuda.memory_allocated()
+    torch.cuda.reset_peak_memory_stats()
+    result = None
+    try:
+        result = torch.linalg.eigh(x)
+        torch.cuda.synchronize()
+        status = 'PASS'
+    except Exception as error:
+        torch.cuda.synchronize()
+        status = f'FAIL: {type(error).__name__}: {error}'
+    peak = torch.cuda.max_memory_allocated()
+    print({
+        'shape': [n, 4, 4],
+        'status': status,
+        'baseline_bytes': baseline,
+        'peak_bytes': peak,
+        'eigh_peak_delta_bytes': peak - baseline,
+    })
+    del result, x
+    torch.cuda.empty_cache()
+PY
+```
+
+執行結果：待執行。
+
+### C35 — §3-2 cu130 `expandable_segments`
+
+此環境變數必須在啟動 Python 前設定。
+
+```bash
+conda activate mdgen2026-cu130
+
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+python - <<'PY' 2>&1 | tee my_new/r2/C35_section3-2-eigh-cu130-expandable.log
+import torch
+
+print('torch:', torch.__version__)
+print('CUDA wheel:', torch.version.cuda)
+print('GPU:', torch.cuda.get_device_name(0))
+
+for n in (64000, 128000):
+    torch.cuda.empty_cache()
+    x = torch.randn((n, 4, 4), device='cuda', dtype=torch.float32)
+    x = (x + x.transpose(-1, -2)) * 0.5
+    torch.cuda.synchronize()
+    baseline = torch.cuda.memory_allocated()
+    torch.cuda.reset_peak_memory_stats()
+    result = None
+    try:
+        result = torch.linalg.eigh(x)
+        torch.cuda.synchronize()
+        status = 'PASS'
+    except Exception as error:
+        torch.cuda.synchronize()
+        status = f'FAIL: {type(error).__name__}: {error}'
+    peak = torch.cuda.max_memory_allocated()
+    print({
+        'shape': [n, 4, 4],
+        'status': status,
+        'baseline_bytes': baseline,
+        'peak_bytes': peak,
+        'eigh_peak_delta_bytes': peak - baseline,
+    })
+    del result, x
+    torch.cuda.empty_cache()
+PY
+```
+
+執行結果：待執行。
+
+### C36 — §3-3 C2 memory snapshot
+
+以下 wrapper 不修改 repo code，只在執行 `train-runtime.py` 前後開啟 CUDA memory history。C36 只跑一個 training step，以涵蓋 `prep_batch`、`eigh`、model forward 與 backward 的記憶體配置。
+
+```bash
+conda activate mdgen2026
+
+python - \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --no-deterministic \
+  --epochs 1 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --run_name C36-section3-C2-memory-snapshot \
+  --model_dir workdir \
+  --peak_memory my_new/r2/C36_section3-C2-memory.json \
+  <<'PY'
+import runpy
+import torch
+
+snapshot_path = 'my_new/r2/C36_section3-C2-memory-snapshot.pickle'
+torch.cuda.memory._record_memory_history(max_entries=100000)
+try:
+    runpy.run_path('train-runtime.py', run_name='__main__')
+finally:
+    torch.cuda.memory._dump_snapshot(snapshot_path)
+    torch.cuda.memory._record_memory_history(enabled=None)
+    print('snapshot:', snapshot_path)
+PY
+```
+
+執行結果：待執行。
+
+### C37 — E2／cu130 Manual A4
+
+```bash
+conda activate mdgen2026-cu130
+
+CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+python benchmark_l_scaling.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --lengths 256 1000 2500 5000 7500 \
+  --num_frames 250 \
+  --seed 137 \
+  --deterministic \
+  --manual_attention \
+  --output my_new/r2/C37_E2-cu130-manual-l-scaling.json \
+  2>&1 | tee my_new/r2/C37_E2-cu130-manual-l-scaling.log
+```
+
+執行結果：待執行。
+
+### C38 — E2／cu130 SDPA A4
+
+```bash
+conda activate mdgen2026-cu130
+
+CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+python benchmark_l_scaling.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --lengths 256 1000 2500 5000 7500 \
+  --num_frames 250 \
+  --seed 137 \
+  --deterministic \
+  --print_sdpa_backend my_new/r2/C38_E2-cu130-sdpa-backend.txt \
+  --output my_new/r2/C38_E2-cu130-sdpa-l-scaling.json \
+  2>&1 | tee my_new/r2/C38_E2-cu130-sdpa-l-scaling.log
+```
+
+執行結果：待執行。
