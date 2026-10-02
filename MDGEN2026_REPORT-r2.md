@@ -104,3 +104,14 @@ A/B 指令規則同步更新：SDPA 組不帶 attention flag；manual 組明確�
 | `scripts/prep_sims.py` | `data-preprocess-fixes`（r1 已存在；r2 修改並保留） | `--atlas_dir` 與舊 `--sim_dir` 共用同一個 argparse 參數，並統一儲存於 `args.atlas_dir`。 |
 
 驗證方式：執行 `python scripts/prep_sims.py --help`，確認同一選項列出 `--atlas_dir ATLAS_DIR, --sim_dir ATLAS_DIR`；實際前處理可使用任一名稱，未提供時仍沿用原本的預設路徑。
+
+### M10 — 第三方檔案來源與授權
+
+處置：保留兩個 AlphaFlow ensemble 分析工具，並補齊可重現的來源與 MIT 授權聲明。修改前已將本機檔案與 AlphaFlow commit `0408d7c89dac444a43a9089d7427ce470b0a5e67` 的對應原檔逐位元比較；兩者內容完全相同，本 repo 只有檔名不同。M10 僅新增檔頭註解，不修改分析邏輯。
+
+| file_path | block_name | 說明改動 |
+|---|---|---|
+| `scripts/analyze_ensemble.py` | `third-party-provenance`（r2 新增） | 記錄原始檔 `scripts/analyze_ensembles.py` 的固定 commit URL、僅改名說明、原作者 copyright 與 MIT License。 |
+| `scripts/print.py` | `third-party-provenance`（r2 新增） | 記錄原始檔 `scripts/print_analysis.py` 的固定 commit URL、僅改名說明、原作者 copyright 與 MIT License。 |
+
+來源 repository：`https://github.com/bjing2016/alphaflow`。原始授權為 MIT License，copyright 為 `2024 Bowen Jing, Bonnie Berger, Tommi Jaakkola`。驗證方式為移除新增的 `third-party-provenance` 檔頭並忽略檔尾換行後，分別與固定 commit 的原始檔比較，並對兩個本機檔案執行 Python 語法編譯檢查。

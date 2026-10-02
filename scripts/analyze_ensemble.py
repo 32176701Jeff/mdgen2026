@@ -1,3 +1,12 @@
+# third-party-provenance:start
+# Source: https://github.com/bjing2016/alphaflow/blob/0408d7c89dac444a43a9089d7427ce470b0a5e67/scripts/analyze_ensembles.py
+# Source commit: 0408d7c89dac444a43a9089d7427ce470b0a5e67
+# Local change: renamed from analyze_ensembles.py; source code is otherwise unchanged.
+# Copyright (c) 2024 Bowen Jing, Bonnie Berger, Tommi Jaakkola
+# Licensed under the MIT License; see the source repository's LICENSE file:
+# https://github.com/bjing2016/alphaflow/blob/0408d7c89dac444a43a9089d7427ce470b0a5e67/LICENSE
+# third-party-provenance:end
+
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--atlas_dir', type=str, required=True)
