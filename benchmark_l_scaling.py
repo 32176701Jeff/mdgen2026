@@ -205,6 +205,7 @@ def make_forward_inputs(model, length, num_frames, device):
     if model.args.sim_condition:
         x_cond_mask[:, 0] = 1
 
+    # position-id-model-routing: r2 intentionally leaves position_ids unset.
     return {
         "x": x,
         "t": torch.full((batch_size,), 0.5, dtype=torch.float32, device=device),
@@ -222,9 +223,6 @@ def make_forward_inputs(model, length, num_frames, device):
         "aatype": torch.zeros(
             batch_size, length, dtype=torch.long, device=device
         ),
-        "position_ids": torch.arange(
-            length, dtype=torch.long, device=device
-        ).unsqueeze(0),
     }
 
 
