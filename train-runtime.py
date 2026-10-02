@@ -247,7 +247,10 @@ class ExecutionTimeCallback(pl.Callback):
         print(f'Execution time report saved to: {self.output_path}')
 
 
-pl.seed_everything(args.train_seed, workers=True)  # seed-initialization
+# seed-initialization:start
+if args.train_seed is not None:
+    pl.seed_everything(args.train_seed, workers=True)
+# seed-initialization:end
 
 torch.set_float32_matmul_precision('medium')  # fp32-matmul-precision
 

@@ -11,13 +11,13 @@ parser.add_argument('--tps', action='store_true')
 parser.add_argument('--xtc', action='store_true')
 parser.add_argument('--out_dir', type=str, default=".")
 parser.add_argument('--split', type=str, default='splits/4AA_test.csv')
-parser.add_argument('--inference_seed', type=int, default=137)  # seed-deterministic-args
+parser.add_argument('--inference_seed', type=int, default=None)  # seed-deterministic-args
 parser.add_argument('--use_sdpa', action='store_true')  # sdpa-route
 # seed-deterministic-args:start
 parser.add_argument(
     '--deterministic',
     action=argparse.BooleanOptionalAction,
-    default=True,
+    default=False,
     help='Use deterministic algorithms when available.',
 )
 parser.add_argument(
@@ -43,7 +43,10 @@ from mdgen.wrapper import NewMDGenWrapper
 from mdgen.utils import atom14_to_pdb
 import pandas as pd
 
-seed_everything(args.inference_seed, workers=True)  # seed-initialization
+# seed-initialization:start
+if args.inference_seed is not None:
+    seed_everything(args.inference_seed, workers=True)
+# seed-initialization:end
 torch.use_deterministic_algorithms(args.deterministic)  # deterministic-execution
 torch.backends.cudnn.benchmark = args.benchmark  # deterministic-benchmark-guard
 

@@ -10,13 +10,13 @@ def parse_train_args(include_runtime_args=False):  # runtime-args-separation
     parser.add_argument("--ckpt", type=str, default=None)
     parser.add_argument("--validate", action='store_true', default=False)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--train_seed", type=int, default=137)  # seed-deterministic-args
+    parser.add_argument("--train_seed", type=int, default=None)  # seed-deterministic-args
     parser.add_argument("--model_dir",type=str,default=None,help="Directory used as MODEL_DIR",)
     # seed-deterministic-args:start
     parser.add_argument(
         "--deterministic",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
         help="Use deterministic algorithms when available.",
     )
     parser.add_argument(

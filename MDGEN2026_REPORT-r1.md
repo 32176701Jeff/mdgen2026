@@ -276,7 +276,7 @@ MDGen-2026的程式修改分成五個方向：
 | Other（T3.5） | 收納不屬於以上三類的相容性及輔助修改 | PyTorch/checkpoint相容性、資料前處理修正及model輸出目錄 |
 | Runtime驗證與new files（T3.6） | 集中介紹新增檔案，以及產生T4/T5所需證據的工具 | 實際SDPA backend、peak memory、sec/step、模組等價性、L-scaling及輔助工具 |
 
-老師的規格定義功能及驗收條件，沒有指定`block_name`名稱。本報告以`block_name`標記`origin/master`之後的程式修改：(a) 完整新增function/class在定義前標記；(b) 既有function內的連續修改使用`:start`／`:end`；(c) 單行修改或argument在行尾標記；(d) start/end不跨越function或class。
+老師的規格定義功能及驗收條件，沒有指定`block_name`名稱。本報告以`block_name`標記`origin/master`之後的程式修改：(a) 完整新增function/class時，在定義前一行標記`# <block_name>`，不再以`:start`／`:end`包住整個function/class；(b) 既有function/class內只修改一行時，直接在該行行尾標記`# <block_name>`，argument、import或常數的單行修改亦同；(c) 既有function/class內連續修改多行時，只以`# <block_name>:start`／`# <block_name>:end`緊貼包住實際修改的連續範圍；(d) 若兩段修改中間包含未修改的舊程式碼，應拆成兩組`:start`／`:end`，兩組可以沿用相同`block_name`，不得為了合併成一大段而把舊程式碼一起包入；(e) `:start`／`:end`不得跨越function或class；(f) 刪除程式碼時直接刪除原程式碼及其標記，不保留`delete_`、`removed`或空白區塊，刪除項目由報告表格及版本diff記錄。
 
 ## T3.1 — 新增項目
 

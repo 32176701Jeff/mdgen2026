@@ -48,7 +48,15 @@ def parse_args():
         ),
     )
     # sdpa-diagnostics:end
-    parser.add_argument("--seed", type=int, default=137)
+    parser.add_argument("--seed", type=int, default=None)  # seed-deterministic-args
+    # seed-deterministic-args:start
+    parser.add_argument(
+        "--deterministic",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Use deterministic algorithms when explicitly requested.",
+    )
+    # seed-deterministic-args:end
     parser.add_argument(
         "--continue_after_oom",
         action="store_true",
@@ -318,9 +326,12 @@ def main():
     if args.num_frames <= 0 or any(length <= 0 for length in args.lengths):
         raise ValueError("--num_frames and every --lengths value must be positive")
 
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
-    torch.use_deterministic_algorithms(True)
+    # seed-initialization:start
+    if args.seed is not None:
+        torch.manual_seed(args.seed)
+        torch.cuda.manual_seed_all(args.seed)
+    # seed-initialization:end
+    torch.use_deterministic_algorithms(args.deterministic)  # deterministic-execution
     torch.backends.cudnn.benchmark = False
 
     device = torch.device("cuda", torch.cuda.current_device())
@@ -357,7 +368,7 @@ def main():
         "batch_size": 1,
         "num_frames": args.num_frames,
         "grad_checkpointing": False,
-        "deterministic": True,
+        "deterministic": args.deterministic,  # deterministic-execution
         "cudnn_benchmark": False,
         "seed": args.seed,
         "torch_version": torch.__version__,
