@@ -2,7 +2,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--split', type=str, default='splits/atlas.csv')
-parser.add_argument('--atlas_dir', type=str, default='/data/cb/scratch/datasets/atlas')  # data-preprocess-fixes
+parser.add_argument('--atlas_dir', '--sim_dir', dest='atlas_dir', type=str, default='/data/cb/scratch/datasets/atlas')  # data-preprocess-fixes
 parser.add_argument('--outdir', type=str, default='./data_atlas')
 parser.add_argument('--num_workers', type=int, default=1)
 parser.add_argument('--suffix', type=str, default='')

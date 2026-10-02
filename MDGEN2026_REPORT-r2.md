@@ -94,3 +94,13 @@
 A/B 指令規則同步更新：SDPA 組不帶 attention flag；manual 組明確加入 `--manual_attention`。因此 C2／C6 等 SDPA 指令移除 `--use_sdpa`，C5 等 manual 指令新增 `--manual_attention`；A4 manual 組加 flag、SDPA 組不帶 flag；A6 manual inference 加 flag、SDPA inference 不帶 flag。`test_sdpa.py` 仍在程式內明確建立 manual 與 SDPA 兩組，不依賴 CLI 預設值，因此不需修改。
 
 驗證計畫：分別執行 `train.py`、`sim_inference.py`、`tps_inference.py`、`design_inference.py`、`upsampling_inference.py`，確認均可載入既有 checkpoint，且未帶 `--manual_attention` 時實際 backend 為 SDPA；再以 `--manual_attention` smoke test 確認手寫路徑仍可用。
+
+### M9 — `--sim_dir` alias
+
+處置：程式修改完成。`scripts/prep_sims.py` 以 `--atlas_dir` 作為目前的主要參數名稱，同時恢復舊版 README 使用的 `--sim_dir` alias；兩種寫法均解析至同一個 `args.atlas_dir`，後續資料讀取邏輯不需分支。
+
+| file_path | block_name | 說明改動 |
+|---|---|---|
+| `scripts/prep_sims.py` | `data-preprocess-fixes`（r1 已存在；r2 修改並保留） | `--atlas_dir` 與舊 `--sim_dir` 共用同一個 argparse 參數，並統一儲存於 `args.atlas_dir`。 |
+
+驗證方式：執行 `python scripts/prep_sims.py --help`，確認同一選項列出 `--atlas_dir ATLAS_DIR, --sim_dir ATLAS_DIR`；實際前處理可使用任一名稱，未提供時仍沿用原本的預設路徑。
