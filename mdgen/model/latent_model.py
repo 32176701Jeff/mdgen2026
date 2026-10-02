@@ -41,7 +41,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
 
 class LatentMDGenModel(nn.Module):
-    def __init__(self, args, latent_dim, use_sdpa=False):  # sdpa-route
+    def __init__(self, args, latent_dim, use_sdpa=True):  # sdpa-route
         super().__init__()
         self.args = args
         self.use_sdpa = use_sdpa  # sdpa-route

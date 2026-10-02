@@ -75,3 +75,22 @@
 | `sim_inference.py` | `fp32-data-pipeline`（r1 已存在；r2 刪除） | 移除無條件將完整輸入複製成 float32 的處理，恢復上游行為：一般 inference 複製第一個 frame 並轉為 float32，TPS 路徑保留原始 memmap 與 dtype。 |
 
 驗證計畫：分別以預設設定與 `--dtype float32` 產生小型 NPY，確認輸出 dtype 為 float16／float32；再各執行一次一般 inference 與 TPS smoke test，確認一般 inference 使用 float32 複本，而 TPS 不複製完整 trajectory。M6 依老師要求獨立 commit。
+
+### M8 — SDPA 改為預設 attention
+
+處置：程式修改完成，五個正式入口的 cluster runtime 驗證待執行。使用者未指定 attention flag 時預設使用 SDPA；需要上游手寫 attention 做 A/B 比較時，才明確傳入 `--manual_attention`。`atlas.ckpt` 的 state_dict 不需轉換，manual 與 SDPA 共用相同參數，差異僅為 runtime attention 路徑。
+
+| file_path | block_name | 說明改動 |
+|---|---|---|
+| `mdgen/parsing.py` | `sdpa-route`（r1 已存在；r2 修改並保留） | 將 `--use_sdpa` 改為 `--manual_attention`；預設不帶 flag 時使用 SDPA。 |
+| `train.py`、`train-runtime.py` | `sdpa-route`（r1 已存在；r2 修改並保留） | 由 `manual_attention` 反向計算 `use_sdpa`；預設 SDPA，只有 `--manual_attention` 使用手寫 attention。 |
+| `mdgen/wrapper.py` | `sdpa-route`（r1 已存在；r2 修改並保留） | `NewMDGenWrapper` 的 `use_sdpa` 建構預設由 `False` 改為 `True`。 |
+| `mdgen/model/latent_model.py` | `sdpa-route`（r1 已存在；r2 修改並保留） | `LatentMDGenModel` 的 `use_sdpa` 建構預設由 `False` 改為 `True`；內部 layer 仍接收上層明確傳入的值。 |
+| `sim_inference.py` | `sdpa-route`（r1 已存在；r2 修改並保留） | 將 `--use_sdpa` 改為 `--manual_attention`；checkpoint 預設以 SDPA 路徑載入。 |
+| `tps_inference.py`、`design_inference.py`、`upsampling_inference.py` | `sdpa-route`（r2 新增） | 三個入口新增 `--manual_attention`，並把對應的 `use_sdpa` 值傳入 `NewMDGenWrapper.load_from_checkpoint()`。 |
+| `tps_inference.py`、`design_inference.py`、`upsampling_inference.py` | `runtime-compatibility`（r2 新增） | checkpoint 載入補上 `weights_only=False`，支援新版 PyTorch 載入舊 Lightning checkpoint。 |
+| `benchmark_l_scaling.py` | `sdpa-route`（r2 新增） | 將 `--use_sdpa` 改為 `--manual_attention`；預設量測 SDPA，加 flag 才量測 manual。 |
+
+A/B 指令規則同步更新：SDPA 組不帶 attention flag；manual 組明確加入 `--manual_attention`。因此 C2／C6 等 SDPA 指令移除 `--use_sdpa`，C5 等 manual 指令新增 `--manual_attention`；A4 manual 組加 flag、SDPA 組不帶 flag；A6 manual inference 加 flag、SDPA inference 不帶 flag。`test_sdpa.py` 仍在程式內明確建立 manual 與 SDPA 兩組，不依賴 CLI 預設值，因此不需修改。
+
+驗證計畫：分別執行 `train.py`、`sim_inference.py`、`tps_inference.py`、`design_inference.py`、`upsampling_inference.py`，確認均可載入既有 checkpoint，且未帶 `--manual_attention` 時實際 backend 為 SDPA；再以 `--manual_attention` smoke test 確認手寫路徑仍可用。

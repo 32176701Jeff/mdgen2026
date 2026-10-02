@@ -17,6 +17,7 @@ parser.add_argument('--random_start_idx', action='store_true')
 parser.add_argument('--split', type=str, default='splits/4AA_test.csv')
 parser.add_argument('--chunk_idx', type=int, default=0)
 parser.add_argument('--n_chunks', type=int, default=1)
+parser.add_argument('--manual_attention', action='store_true')  # sdpa-route
 args = parser.parse_args()
 import mdgen.analysis
 import os, torch, mdtraj, tqdm
@@ -154,7 +155,13 @@ def do(model, name, seqres):
 
 @torch.no_grad()
 def main():
-    model = NewMDGenWrapper.load_from_checkpoint(args.sim_ckpt)
+    # runtime-compatibility:start
+    model = NewMDGenWrapper.load_from_checkpoint(
+        args.sim_ckpt,
+        use_sdpa=not args.manual_attention,  # sdpa-route
+        weights_only=False,
+    )
+    # runtime-compatibility:end
     model.eval().to('cuda')
     df = pd.read_csv(args.split, index_col='name')
     names = np.array(df.index)

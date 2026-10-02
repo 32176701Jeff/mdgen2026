@@ -1,7 +1,9 @@
 from mdgen.parsing import parse_train_args
 args = parse_train_args()  # runtime-args-separation
-use_sdpa = args.use_sdpa  # sdpa-route
-delattr(args, 'use_sdpa')  # sdpa-route
+# sdpa-route:start
+use_sdpa = not args.manual_attention
+delattr(args, 'manual_attention')
+# sdpa-route:end
 from mdgen.logger import get_logger
 logger = get_logger(__name__)
 

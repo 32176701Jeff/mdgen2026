@@ -7,6 +7,7 @@ parser.add_argument('--pdb_id', nargs='*', default=[])
 parser.add_argument('--batch_size', type=int, default=1)
 parser.add_argument('--out_dir', type=str, default=".")
 parser.add_argument('--split', type=str, default='splits/4AA_implicit_test.csv')
+parser.add_argument('--manual_attention', action='store_true')  # sdpa-route
 args = parser.parse_args()
 
 import os, torch, mdtraj, tqdm
@@ -91,7 +92,13 @@ def do(model, name, seqres):
 
 @torch.no_grad()
 def main():
-    model = NewMDGenWrapper.load_from_checkpoint(args.ckpt)
+    # runtime-compatibility:start
+    model = NewMDGenWrapper.load_from_checkpoint(
+        args.ckpt,
+        use_sdpa=not args.manual_attention,  # sdpa-route
+        weights_only=False,
+    )
+    # runtime-compatibility:end
     model.eval().to('cuda')
     
     

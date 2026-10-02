@@ -12,7 +12,7 @@ parser.add_argument('--xtc', action='store_true')
 parser.add_argument('--out_dir', type=str, default=".")
 parser.add_argument('--split', type=str, default='splits/4AA_test.csv')
 parser.add_argument('--inference_seed', type=int, default=None)  # seed-deterministic-args
-parser.add_argument('--use_sdpa', action='store_true')  # sdpa-route
+parser.add_argument('--manual_attention', action='store_true')  # sdpa-route
 # seed-deterministic-args:start
 parser.add_argument(
     '--deterministic',
@@ -159,7 +159,7 @@ def do(model, name, seqres):
 def main():
     model = NewMDGenWrapper.load_from_checkpoint(
         args.sim_ckpt,
-        use_sdpa=args.use_sdpa,  # sdpa-route
+        use_sdpa=not args.manual_attention,  # sdpa-route
         weights_only=False,
     )
     model.eval().float().to('cuda')  # fp32-inference-model

@@ -35,7 +35,7 @@ def parse_args():
         default=250,
         help="Trajectory frames T; Atlas inference uses 250.",
     )
-    parser.add_argument("--use_sdpa", action="store_true")
+    parser.add_argument("--manual_attention", action="store_true")  # sdpa-route
     # sdpa-diagnostics:start
     parser.add_argument(
         "--print_sdpa_backend",
@@ -321,6 +321,7 @@ def run_case(model, length, num_frames, device):
 
 def main():
     args = parse_args()
+    use_sdpa = not args.manual_attention  # sdpa-route
     if not torch.cuda.is_available():
         raise RuntimeError("A4 L-scaling requires a CUDA GPU")
     if args.num_frames <= 0 or any(length <= 0 for length in args.lengths):
@@ -337,7 +338,7 @@ def main():
     device = torch.device("cuda", torch.cuda.current_device())
     model = NewMDGenWrapper.load_from_checkpoint(
         args.sim_ckpt,
-        use_sdpa=args.use_sdpa,
+        use_sdpa=use_sdpa,  # sdpa-route
         weights_only=False,
     )
     model.eval().float().to(device)
@@ -351,7 +352,7 @@ def main():
             args.num_frames,
             device,
             args.print_sdpa_backend,
-            args.use_sdpa,
+            use_sdpa,  # sdpa-route
         )
     # sdpa-diagnostics:end
 
@@ -363,7 +364,7 @@ def main():
             "model parameters, synthetic inputs, and forward temporaries, but excludes "
             "checkpoint-loading peak."
         ),
-        "attention_path": "sdpa" if args.use_sdpa else "manual",
+        "attention_path": "sdpa" if use_sdpa else "manual",  # sdpa-route
         "dtype": "float32",
         "batch_size": 1,
         "num_frames": args.num_frames,

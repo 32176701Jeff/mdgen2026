@@ -173,7 +173,7 @@ class Wrapper(pl.LightningModule):
 
 
 class NewMDGenWrapper(Wrapper):
-    def __init__(self, args, use_sdpa=False):  # sdpa-route
+    def __init__(self, args, use_sdpa=True):  # sdpa-route
         super().__init__(args)
         self.use_sdpa = use_sdpa  # sdpa-route
         for key in [

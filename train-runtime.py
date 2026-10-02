@@ -1,10 +1,14 @@
 from mdgen.parsing import parse_train_args
 args = parse_train_args(include_runtime_args=True)  # runtime-args-separation
-use_sdpa = args.use_sdpa  # sdpa-route
+# sdpa-route:start
+use_sdpa = not args.manual_attention
+# sdpa-route:end
 print_sdpa_backend = args.print_sdpa_backend  # sdpa-diagnostics
 peak_memory_path = args.peak_memory  # peak_memory
 execution_time_path = args.execution_time  # execution_time
-delattr(args, 'use_sdpa')  # sdpa-route
+# sdpa-route:start
+delattr(args, 'manual_attention')
+# sdpa-route:end
 delattr(args, 'print_sdpa_backend')  # sdpa-diagnostics
 delattr(args, 'peak_memory')  # peak_memory
 delattr(args, 'execution_time')  # execution_time

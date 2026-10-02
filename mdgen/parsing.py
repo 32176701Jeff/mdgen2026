@@ -103,7 +103,7 @@ def parse_train_args(include_runtime_args=False):  # runtime-args-separation
     group = parser.add_argument_group("Model settings")
     group.add_argument('--hyena', action='store_true')
     group.add_argument('--no_rope', action='store_true')
-    group.add_argument('--use_sdpa', action='store_true')  # sdpa-route
+    group.add_argument('--manual_attention', action='store_true')  # sdpa-route
     # runtime-args-separation:start
     if include_runtime_args:
         # sdpa-diagnostics:start
