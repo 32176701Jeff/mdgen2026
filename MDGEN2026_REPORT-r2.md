@@ -115,3 +115,16 @@ A/B 指令規則同步更新：SDPA 組不帶 attention flag；manual 組明確�
 | `scripts/print.py` | `third-party-provenance`（r2 新增） | 記錄原始檔 `scripts/print_analysis.py` 的固定 commit URL、僅改名說明、原作者 copyright 與 MIT License。 |
 
 來源 repository：`https://github.com/bjing2016/alphaflow`。原始授權為 MIT License，copyright 為 `2024 Bowen Jing, Bonnie Berger, Tommi Jaakkola`。驗證方式為移除新增的 `third-party-provenance` 檔頭並忽略檔尾換行後，分別與固定 commit 的原始檔比較，並對兩個本機檔案執行 Python 語法編譯檢查。
+
+### M11 — SDPA regression test 補強
+
+處置：測試程式修改完成，目標環境 runtime 驗證待執行。RoPE 的 manual 基準不再使用目前 `mdgen/model/mha.py` 內的 manual 分支，改用固定的未修改上游實作；另新增 time-axis 整列 padding case，涵蓋某個 padding residue 的所有真實 time keys 均被遮蔽、只保留 `bias_k`／`bias_v` token 的情境。M1 的 position IDs 拒絕測試與 M3 的 no-RoPE padding 測試繼續使用目前 2026 manual／SDPA 實作，因為這兩項是 r2 的刻意介面與行為。
+
+| file_path | block_name | 說明改動 |
+|---|---|---|
+| `mdgen/model/mha_legacy.py` | `sdpa-upstream-reference`（r2 新增） | 保存上游 commit `642b95b4740ef889167f433a9155d6ed34ee6a70` 的 `mdgen/model/mha.py` 可執行內容，僅新增來源檔頭，作為固定 manual-attention regression baseline；正式模型不匯入此檔。 |
+| `test_sdpa.py` | `sdpa-upstream-reference`（r2 新增） | RoPE 的 residue／time 測試改為上游 legacy manual 對目前 SDPA，仍比較 output、input gradient 與 parameter gradient。 |
+| `test_sdpa.py` | `sdpa-time-full-row-padding`（r2 新增） | 新增 `time_full_row_padding` case，將一整列真實 time keys 設為 padding；要求 legacy manual 與 SDPA 的 output／gradient 通過既有誤差門檻，且 output 與所有 gradient 均為 finite。 |
+| `test_sdpa.py` | `sdpa-equivalence-test`（r1 已存在；r2 修改並保留） | 新增目前版本的 manual／SDPA 建構函式，使 `position_ids` 非 `None` 的 regression case 仍明確檢查兩條 r2 路徑皆拋出 `NotImplementedError`。 |
+
+上游基準已確認：commit `642b95b4740ef889167f433a9155d6ed34ee6a70` 的 `mha.py` 與目前 `upstream/master` 對應檔案相同；`mha_legacy.py` 去除新增來源檔頭並忽略檔尾換行後，與該固定 commit 內容一致。測試維持 output relative error `< 1e-5`、gradient relative error `< 1e-4`；實際 CPU／CUDA 結果與輸出 JSON 待在安裝 PyTorch／ESM 的目標環境執行 `test_sdpa.py` 後補入。

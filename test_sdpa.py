@@ -9,6 +9,7 @@ import numpy as np
 import torch
 
 from mdgen.model.mha import MultiheadAttention
+from mdgen.model.mha_legacy import MultiheadAttention as LegacyMultiheadAttention  # sdpa-upstream-reference
 from mdgen.model.latent_model import AttentionWithRoPE  # sdpa-equivalence-test
 
 
@@ -48,6 +49,22 @@ class SDPAEquivalenceTest:
             "add_bias_kv": True,
             "use_rotary_embeddings": True,
         }
+        manual = LegacyMultiheadAttention(**common_args)  # sdpa-upstream-reference
+        sdpa = MultiheadAttention(**common_args, use_sdpa=True)
+        sdpa.load_state_dict(manual.state_dict())
+        manual.eval().to(device=self.device, dtype=torch.float32)
+        sdpa.eval().to(device=self.device, dtype=torch.float32)
+        return manual, sdpa
+
+    # sdpa-equivalence-test
+    def _build_current_modules(self):
+        common_args = {
+            "embed_dim": self.embed_dim,
+            "num_heads": self.num_heads,
+            "dropout": 0.0,
+            "add_bias_kv": True,
+            "use_rotary_embeddings": True,
+        }
         manual = MultiheadAttention(**common_args, use_sdpa=False)
         sdpa = MultiheadAttention(**common_args, use_sdpa=True)
         sdpa.load_state_dict(manual.state_dict())
@@ -71,7 +88,7 @@ class SDPAEquivalenceTest:
         sdpa.eval().to(device=self.device, dtype=torch.float32)
         return manual, sdpa
 
-    def _make_mask(self, batch_size: int, sequence_length: int, padded: bool):
+    def _make_mask(self, batch_size, sequence_length, padded, full_padding_row=False):  # sdpa-time-full-row-padding
         mask = torch.zeros(
             batch_size,
             sequence_length,
@@ -82,6 +99,10 @@ class SDPAEquivalenceTest:
             mask[0, -3:] = True
             if batch_size > 1:
                 mask[1, -1:] = True
+        # sdpa-time-full-row-padding:start
+        if full_padding_row:
+            mask[0, :] = True
+        # sdpa-time-full-row-padding:end
         return mask
 
     def _save_parameter_gradients(self, path: Path, gradients):
@@ -107,7 +128,7 @@ class SDPAEquivalenceTest:
             dtype=torch.long,
             device=self.device,
         ).expand(batch_size, -1)
-        modules = dict(zip(("manual", "sdpa"), self._build_modules()))
+        modules = dict(zip(("manual", "sdpa"), self._build_current_modules()))  # sdpa-equivalence-test
         rejected = {}
         for name, module in modules.items():
             try:
@@ -243,7 +264,7 @@ class SDPAEquivalenceTest:
             "passed": passed,
         }
 
-    def _run_case(self, name, sequence_length, batch_size, padded):
+    def _run_case(self, name, sequence_length, batch_size, padded, full_padding_row=False):  # sdpa-time-full-row-padding
         case_dir = self.output_dir / name
         case_dir.mkdir()
 
@@ -256,7 +277,9 @@ class SDPAEquivalenceTest:
             device=self.device,
         )
         grad_output = torch.randn_like(base_input)
-        key_padding_mask = self._make_mask(batch_size, sequence_length, padded)
+        key_padding_mask = self._make_mask(
+            batch_size, sequence_length, padded, full_padding_row
+        )  # sdpa-time-full-row-padding
 
         manual_input = base_input.detach().clone().requires_grad_(True)
         sdpa_input = base_input.detach().clone().requires_grad_(True)
@@ -267,7 +290,6 @@ class SDPAEquivalenceTest:
             value=manual_input,
             key_padding_mask=key_padding_mask,
             need_weights=False,
-            position_ids=None,
         )
         sdpa_output, _ = sdpa(
             query=sdpa_input,
@@ -335,9 +357,28 @@ class SDPAEquivalenceTest:
         gradient_relative_error = max(
             input_grad_relative_error, parameter_gradient_relative_error
         )
+        # sdpa-time-full-row-padding:start
+        outputs_finite = bool(
+            torch.isfinite(manual_output).all().item()
+            and torch.isfinite(sdpa_output).all().item()
+        )
+        gradients_finite = bool(
+            torch.isfinite(manual_input.grad).all().item()
+            and torch.isfinite(sdpa_input.grad).all().item()
+            and all(
+                torch.isfinite(gradient).all().item()
+                for gradient in manual_parameter_gradients.values()
+            )
+            and all(
+                torch.isfinite(gradient).all().item()
+                for gradient in sdpa_parameter_gradients.values()
+            )
+        )
+        # sdpa-time-full-row-padding:end
         passed = (
-            manual.last_attention_backend == "manual"
-            and sdpa.last_attention_backend == "sdpa"
+            sdpa.last_attention_backend == "sdpa"
+            and outputs_finite  # sdpa-time-full-row-padding
+            and gradients_finite  # sdpa-time-full-row-padding
             and output_relative_error < OUTPUT_RELATIVE_ERROR_LIMIT
             and gradient_relative_error < GRADIENT_RELATIVE_ERROR_LIMIT
         )
@@ -345,8 +386,9 @@ class SDPAEquivalenceTest:
             "sequence_length": sequence_length,
             "effective_batch_size": batch_size,
             "padding": padded,
+            "full_padding_row": full_padding_row,  # sdpa-time-full-row-padding
             "position_ids": None,
-            "manual_path": manual.last_attention_backend,
+            "manual_path": "upstream_manual",  # sdpa-upstream-reference
             "sdpa_path": sdpa.last_attention_backend,
             "sdpa_fallback_reason": sdpa.last_sdpa_fallback_reason,
             "output_max_absolute_error": output_max_absolute_error,
@@ -355,6 +397,8 @@ class SDPAEquivalenceTest:
             "input_grad_relative_error": input_grad_relative_error,
             "parameter_grad_relative_error": parameter_gradient_relative_error,
             "gradient_relative_error": gradient_relative_error,
+            "outputs_finite": outputs_finite,  # sdpa-time-full-row-padding
+            "gradients_finite": gradients_finite,  # sdpa-time-full-row-padding
             "parameter_gradient_errors": parameter_gradient_errors,
             "passed": passed,
         }
@@ -365,12 +409,15 @@ class SDPAEquivalenceTest:
 
     def run(self):
         position_ids_non_none = self._test_position_ids_rejected()  # sdpa-equivalence-test
+        # sdpa-time-full-row-padding:start
         cases = (
-            ("residue_no_padding", 32, 4, False),
-            ("residue_padding", 32, 4, True),
-            ("time_no_padding", 16, 8, False),
-            ("time_padding", 16, 8, True),
+            ("residue_no_padding", 32, 4, False, False),
+            ("residue_padding", 32, 4, True, False),
+            ("time_no_padding", 16, 8, False, False),
+            ("time_padding", 16, 8, True, False),
+            ("time_full_row_padding", 16, 8, True, True),
         )
+        # sdpa-time-full-row-padding:end
         results = {}
         for case_index, case in enumerate(cases):
             torch.manual_seed(self.seed + case_index)
