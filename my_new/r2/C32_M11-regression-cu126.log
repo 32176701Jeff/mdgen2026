@@ -1,0 +1,9 @@
+/home/jeff/.conda/envs/mdgen2026-r2-a6-cu126/lib/python3.10/site-packages/torch/autograd/graph.py:882: UserWarning: Attempting to run cuBLAS, but there was no current CUDA context! Attempting to set the primary context... (Triggered internally at /pytorch/aten/src/ATen/cuda/CublasHandlePool.cpp:370.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+residue_no_padding: output=5.595e-07, gradient=8.642e-07, path=sdpa, pass=True
+residue_padding: output=5.120e-07, gradient=8.243e-07, path=sdpa, pass=True
+time_no_padding: output=3.754e-07, gradient=5.065e-07, path=sdpa, pass=True
+time_padding: output=3.164e-07, gradient=5.416e-07, path=sdpa, pass=True
+time_full_row_padding: output=3.325e-07, gradient=6.386e-07, path=sdpa, pass=True
+no_rope_padding: output=2.407e-07, gradient=6.074e-06, manual_padding=0.000e+00, sdpa_padding=0.000e+00, pass=True
+summary: my_new/r2/C32_M11-regression-cu126/summary.json

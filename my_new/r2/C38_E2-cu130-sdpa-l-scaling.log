@@ -1,0 +1,15 @@
+2026-10-02 23:35:55,725 [SWCLAB-CLUSTER2-LINUX:497445] [INFO] Loading EMA state dict
+/home/jeff/.conda/envs/mdgen2026-r2-a6-cu130/lib/python3.10/site-packages/torch/profiler/profiler.py:272: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+USDT:2026-10-02 23:35:55 497445:497445 ActivityProfilerController.cpp:415] profiler_start
+USDT:2026-10-02 23:35:56 497445:497445 ActivityProfilerController.cpp:455] profiler_stop
+SDPA backend report saved to: /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/my_new/r2/C38_E2-cu130-sdpa-backend.txt
+A4: attention=sdpa B=1 T=250 L=256
+A4: L=256 success, peak_allocated=1.918 GiB
+A4: attention=sdpa B=1 T=250 L=1000
+A4: L=1000 success, peak_allocated=7.001 GiB
+A4: attention=sdpa B=1 T=250 L=2500
+A4: L=2500 success, peak_allocated=17.259 GiB
+A4: attention=sdpa B=1 T=250 L=5000
+A4: L=5000 OOM, peak_allocated=20.450 GiB
+A4 report saved to: /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/my_new/r2/C38_E2-cu130-sdpa-l-scaling.json

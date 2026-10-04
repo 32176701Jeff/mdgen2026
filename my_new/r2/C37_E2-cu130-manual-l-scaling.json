@@ -1,0 +1,116 @@
+{
+  "benchmark": "A4 L-scaling single model forward",
+  "checkpoint": "/mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/ckpt/atlas.ckpt",
+  "measurement_scope": "Full LatentMDGenModel forward in torch.inference_mode; peak includes model parameters, synthetic inputs, and forward temporaries, but excludes checkpoint-loading peak.",
+  "attention_path": "manual",
+  "dtype": "float32",
+  "batch_size": 1,
+  "num_frames": 250,
+  "grad_checkpointing": false,
+  "deterministic": true,
+  "cudnn_benchmark": false,
+  "seed": 137,
+  "torch_version": "2.12.1+cu130",
+  "cuda_wheel": "13.0",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "gpu_total_memory_bytes": 25252724736,
+  "lengths_requested": [
+    256,
+    1000,
+    2500,
+    5000,
+    7500
+  ],
+  "results": [
+    {
+      "length": 256,
+      "oom": false,
+      "baseline_memory_allocated_bytes": 140292608,
+      "baseline_memory_allocated_gib": 0.13065767288208008,
+      "peak_memory_allocated_bytes": 2833862144,
+      "peak_memory_allocated_gib": 2.63923978805542,
+      "peak_memory_reserved_bytes": 3414163456,
+      "peak_memory_reserved_gib": 3.1796875,
+      "output_shape": [
+        1,
+        250,
+        256,
+        21
+      ],
+      "attention_modules": {
+        "ipa_layers.0.mha_l.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "ipa_layers.1.mha_l.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "ipa_layers.2.mha_l.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "ipa_layers.3.mha_l.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "ipa_layers.4.mha_l.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "layers.0.mha_t.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "layers.0.mha_l.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "layers.1.mha_t.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "layers.1.mha_l.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "layers.2.mha_t.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "layers.2.mha_l.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "layers.3.mha_t.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "layers.3.mha_l.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "layers.4.mha_t.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        },
+        "layers.4.mha_l.attn": {
+          "path": "manual",
+          "fallback_reason": null
+        }
+      }
+    },
+    {
+      "length": 1000,
+      "oom": true,
+      "peak_is_pre_oom_lower_bound": true,
+      "baseline_memory_allocated_bytes": 174606848,
+      "baseline_memory_allocated_gib": 0.16261529922485352,
+      "peak_memory_allocated_bytes": 18157871616,
+      "peak_memory_allocated_gib": 16.91083574295044,
+      "peak_memory_reserved_bytes": 19925041152,
+      "peak_memory_reserved_gib": 18.556640625,
+      "error": "CUDA out of memory. Tried to allocate 14.92 GiB. GPU 0 has a total capacity of 23.52 GiB of which 6.09 GiB is free. Including non-PyTorch memory, this process has 17.40 GiB memory in use. Of the allocated memory 16.91 GiB is allocated by PyTorch, and 23.30 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+    }
+  ]
+}

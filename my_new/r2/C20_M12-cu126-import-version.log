@@ -1,0 +1,9 @@
+torch: 2.12.1+cu126
+torch CUDA: 12.6
+Lightning: 2.6.5
+PyEMMA: 2.5.12
+deeptime: 0.4.5
+CUDA available: True
+GPU: NVIDIA GeForce RTX 4090
+import mdgen: PASS
+import pyemma: PASS

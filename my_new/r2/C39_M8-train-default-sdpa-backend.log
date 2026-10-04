@@ -1,0 +1,38 @@
+Seed set to 137
+Trainer already configured with model summary callbacks: [<class 'pytorch_lightning.callbacks.model_summary.ModelSummary'>]. Skipping setting a default `ModelSummary` callback.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+`Trainer(limit_train_batches=1)` was configured so 1 batch per epoch will be used.
+/home/jeff/.conda/envs/mdgen2026-r2-a6-cu126/lib/python3.10/site-packages/pytorch_lightning/callbacks/model_checkpoint.py:881: Checkpoint directory /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/workdir/C39-M8-train-default-sdpa-backend exists and is not empty.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name                | Type             | Params | Mode  | FLOPs
+-------------------------------------------------------------------------
+0 | model               | LatentMDGenModel | 34.2 M | train | 0    
+1 | model.latent_to_emb | Linear           | 8.4 K  | train | 0    
+2 | model.cond_to_emb   | Linear           | 8.4 K  | train | 0    
+3 | model.mask_to_emb   | Embedding        | 768    | train | 0    
+4 | model.aatype_to_emb | Embedding        | 8.1 K  | train | 0    
+5 | model.ipa_layers    | ModuleList       | 15.1 M | train | 0    
+6 | model.layers        | ModuleList       | 18.5 M | train | 0    
+7 | model.emb_to_latent | FinalLayer       | 303 K  | train | 0    
+8 | model.t_embedder    | TimestepEmbedder | 246 K  | train | 0    
+-------------------------------------------------------------------------
+34.2 M    Trainable params
+0         Non-trainable params
+34.2 M    Total params
+136.610   Total estimated model params size (MB)
+248       Modules in train mode
+0         Modules in eval mode
+0         Total Flops
+/home/jeff/.conda/envs/mdgen2026-r2-a6-cu126/lib/python3.10/site-packages/pytorch_lightning/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+/home/jeff/.conda/envs/mdgen2026-r2-a6-cu126/lib/python3.10/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:434: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=31` in the `DataLoader` to improve performance.
+Training: |          | 0/? [00:00<?, ?it/s]Training: |          | 0/? [00:00<?, ?it/s]Epoch 0:   0%|          | 0/1 [00:00<?, ?it/s]/home/jeff/.conda/envs/mdgen2026-r2-a6-cu126/lib/python3.10/site-packages/torch/profiler/profiler.py:272: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+USDT:2026-10-04 16:47:46 520284:520284 ActivityProfilerController.cpp:415] profiler_start
+USDT:2026-10-04 16:47:46 520284:520284 ActivityProfilerController.cpp:455] profiler_stop
+SDPA backend report saved to: /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/my_new/r2/C39_M8-train-default-sdpa-backend.txt
+Epoch 0: 100%|██████████| 1/1 [00:01<00:00,  0.80it/s]Epoch 0: 100%|██████████| 1/1 [00:01<00:00,  0.80it/s]Epoch 0: 100%|██████████| 1/1 [00:01<00:00,  0.80it/s]2026-10-04 16:47:47,247 [SWCLAB-CLUSTER2-LINUX:520284] [INFO] {'train_model_dur': 0.20919036865234375, 'train_loss': 2.2908639907836914, 'train_time': 0.6847999095916748, 'train_dur': 0.7828037738800049, 'train_general_step_dur': 0.2597036361694336, 'epoch': 0, 'trainer_step': 1, 'iter_step': 1, 'train_count': 1, 'lr': 0.0001}
+`Trainer.fit` stopped: `max_epochs=1` reached.
+Epoch 0: 100%|██████████| 1/1 [00:01<00:00,  0.80it/s]

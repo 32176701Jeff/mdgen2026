@@ -1,0 +1,6 @@
+2026-10-02 23:35:45,953 [SWCLAB-CLUSTER2-LINUX:497303] [INFO] Loading EMA state dict
+A4: attention=manual B=1 T=250 L=256
+A4: L=256 success, peak_allocated=2.639 GiB
+A4: attention=manual B=1 T=250 L=1000
+A4: L=1000 OOM, peak_allocated=16.911 GiB
+A4 report saved to: /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/my_new/r2/C37_E2-cu130-manual-l-scaling.json

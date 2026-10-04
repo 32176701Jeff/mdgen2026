@@ -1,0 +1,5 @@
+torch: 2.12.1+cu126
+CUDA wheel: 12.6
+GPU: NVIDIA GeForce RTX 4090
+{'shape': [64000, 4, 4], 'status': 'PASS', 'baseline_bytes': 4096000, 'peak_bytes': 8577280512, 'eigh_peak_delta_bytes': 8573184512}
+{'shape': [128000, 4, 4], 'status': 'FAIL: _LinAlgError: cusolver error: CUSOLVER_STATUS_INVALID_VALUE, when calling `cusolverDnXsyevBatched_bufferSize( handle, params, jobz, uplo, n, CUDA_R_32F, reinterpret_cast<const void*>(A), lda, CUDA_R_32F, reinterpret_cast<const void*>(W), CUDA_R_32F, workspaceInBytesOnDevice, workspaceInBytesOnHost, batchSize)`. This error may appear if the input matrix contains NaN. If you keep seeing this error, you may use `torch.backends.cuda.preferred_linalg_library()` to try linear algebra operators with other supported backends. See https://pytorch.org/docs/stable/backends.html#torch.backends.cuda.preferred_linalg_library', 'baseline_bytes': 8192000, 'peak_bytes': 18944000, 'eigh_peak_delta_bytes': 10752000}

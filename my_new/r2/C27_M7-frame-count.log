@@ -1,0 +1,10 @@
+data/npy/1a62_A_R1.npy (251, 130, 14, 3)
+data/npy/1a62_A_R2.npy (251, 130, 14, 3)
+data/npy/1a62_A_R3.npy (251, 130, 14, 3)
+data/npy/1bgf_A_R1.npy (251, 124, 14, 3)
+data/npy/1bgf_A_R2.npy (251, 124, 14, 3)
+data/npy/1bgf_A_R3.npy (251, 124, 14, 3)
+data/npy/1bkp_A_R1.npy (251, 278, 14, 3)
+data/npy/1bkp_A_R2.npy (251, 278, 14, 3)
+data/npy/1bkp_A_R3.npy (251, 278, 14, 3)
+frame_count_summary: {251: 9}

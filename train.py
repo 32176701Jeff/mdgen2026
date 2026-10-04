@@ -79,6 +79,17 @@ trainer = pl.Trainer(
 )
 
 if args.validate:
-    trainer.validate(model, val_loader, ckpt_path=args.ckpt)
+    trainer.validate(
+        model,
+        val_loader,
+        ckpt_path=args.ckpt,
+        weights_only=False,  # runtime-compatibility
+    )
 else:
-    trainer.fit(model, train_loader, val_loader, ckpt_path=args.ckpt)
+    trainer.fit(
+        model,
+        train_loader,
+        val_loader,
+        ckpt_path=args.ckpt,
+        weights_only=False,  # runtime-compatibility
+    )

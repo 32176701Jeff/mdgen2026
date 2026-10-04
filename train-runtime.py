@@ -327,7 +327,12 @@ trainer = pl.Trainer(
 )
 
 if args.validate:
-    trainer.validate(model, val_loader, ckpt_path=args.ckpt)
+    trainer.validate(
+        model,
+        val_loader,
+        ckpt_path=args.ckpt,
+        weights_only=False,  # runtime-compatibility
+    )
 else:
     # peak_memory:start
     if peak_memory_path is not None:
@@ -338,7 +343,13 @@ else:
     # peak_memory:end
     # peak_memory:start
     try:
-        trainer.fit(model, train_loader, val_loader, ckpt_path=args.ckpt)
+        trainer.fit(
+            model,
+            train_loader,
+            val_loader,
+            ckpt_path=args.ckpt,
+            weights_only=False,  # runtime-compatibility
+        )
     except torch.cuda.OutOfMemoryError as error:
         if peak_memory_path is not None:
             write_peak_memory_report(
