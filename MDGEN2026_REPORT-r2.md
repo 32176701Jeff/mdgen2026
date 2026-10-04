@@ -66,7 +66,7 @@
 
 ### M6 — NPY dtype 選項
 
-處置：程式修改完成，cluster runtime 驗證待執行。前處理輸出的 NPY 預設恢復為上游使用的 float16，使 ATLAS 資料量化方式與 `atlas.ckpt` 的訓練條件一致；需要較大座標範圍的 Piezo1、膜蛋白或 ligand 系統可明確選擇 float32。這只調整 NPY 的儲存 dtype；training dataset 現有程式會在讀取後轉為 float32，模型運算 dtype 不變。
+處置：程式修改完成。前處理輸出的 NPY 預設恢復為上游使用的 float16，使 ATLAS 資料量化方式與 `atlas.ckpt` 的訓練條件一致；需要較大座標範圍的 Piezo1、膜蛋白或 ligand 系統可明確選擇 float32。這只調整 NPY 的儲存 dtype；training dataset 現有程式會在讀取後轉為 float32，模型運算 dtype 不變。
 
 | file_path | block_name | 說明改動 |
 |---|---|---|
@@ -74,11 +74,11 @@
 | `scripts/prep_sims.py` | `npy-dtype-option`（r2 新增） | 新增 `--dtype {float16,float32}`，預設 `float16`；依選項決定輸出 NPY dtype。 |
 | `sim_inference.py` | `fp32-data-pipeline`（r1 已存在；r2 刪除） | 移除無條件將完整輸入複製成 float32 的處理，恢復上游行為：一般 inference 複製第一個 frame 並轉為 float32，TPS 路徑保留原始 memmap 與 dtype。 |
 
-驗證計畫：分別以預設設定與 `--dtype float32` 產生小型 NPY，確認輸出 dtype 為 float16／float32；再各執行一次一般 inference 與 TPS smoke test，確認一般 inference 使用 float32 複本，而 TPS 不複製完整 trajectory。M6 依老師要求獨立 commit。
+驗證範圍：本輪以 code review 確認 `--dtype` 的預設值與兩個分支分別對應 float16／float32，並確認 `sim_inference.get_batch` 已恢復上游的 copy／memmap 行為；沒有另外執行 M6 專用的 NPY 產生與 TPS runtime smoke test。M6 已依老師要求放在獨立 commit。
 
 ### M8 — SDPA 改為預設 attention
 
-處置：程式修改與五個正式入口的 cluster runtime 驗證完成。使用者未指定 attention flag 時預設使用 SDPA；需要上游手寫 attention 做 A/B 比較時，才明確傳入 `--manual_attention`。`atlas.ckpt` 的 state_dict 不需轉換，manual 與 SDPA 共用相同參數，差異僅為 runtime attention 路徑。C26、C28–C31 均成功載入 checkpoint；C26 與 C32 驗證實際 SDPA 計算路徑。
+處置：程式修改完成，五個正式入口均已完成 checkpoint 載入或 smoke test。使用者未指定 attention flag 時預設使用 SDPA；需要上游手寫 attention 做 A/B 比較時，才明確傳入 `--manual_attention`。`atlas.ckpt` 的 state_dict 不需轉換，manual 與 SDPA 共用相同參數，差異僅為 runtime attention 路徑。C26 完成預設 SDPA 的完整 sim inference，C28 完成一個 validation batch，C39 則在不帶 attention flag 的 training forward 實際記錄到 SDPA 與 `EFFICIENT_ATTENTION` backend。C29–C31 因 `atlas.ckpt` 與 TPS、design、upsampling 的完整任務輸入不相容，使用空 split 驗證三個入口可解析預設參數並載入 checkpoint；這三項沒有執行 attention forward。
 
 | file_path | block_name | 說明改動 |
 |---|---|---|
@@ -94,7 +94,7 @@
 
 A/B 指令規則同步更新：SDPA 組不帶 attention flag；manual 組明確加入 `--manual_attention`。因此 C2／C6 等 SDPA 指令移除 `--use_sdpa`，C5 等 manual 指令新增 `--manual_attention`；A4 manual 組加 flag、SDPA 組不帶 flag；A6 manual inference 加 flag、SDPA inference 不帶 flag。`test_sdpa.py` 仍在程式內明確建立 manual 與 SDPA 兩組，不依賴 CLI 預設值，因此不需修改。
 
-驗證結果：C26、C28–C31 已分別執行 `sim_inference.py`、`train.py`、`tps_inference.py`、`design_inference.py`、`upsampling_inference.py`，五個入口皆可載入既有 checkpoint。C26 與 C32 驗證預設 SDPA 計算路徑，C25 驗證 `--manual_attention` 路徑仍可產生 PDB。
+驗證結果：C26、C28–C31 已分別執行 `sim_inference.py`、`train.py`、`tps_inference.py`、`design_inference.py`、`upsampling_inference.py`，五個入口皆可載入既有 checkpoint。C26 完成預設 SDPA sim inference，C39 證明 training 未帶 attention flag 時實際呼叫 PyTorch SDPA 並選到 `EFFICIENT_ATTENTION`；C32 驗證 manual／SDPA 數值等價性，C25 驗證 `--manual_attention` 路徑仍可產生 PDB。C29–C31 僅為空 split 的載入與介面 smoke test，未宣稱取得三個入口的 attention forward backend trace。
 
 ### M9 — `--sim_dir` alias
 
@@ -160,9 +160,9 @@ A/B 指令規則同步更新：SDPA 組不帶 attention flag；manual 組明確�
 | C26 | M4／重跑 r1 C18；M8 sim 入口 | 執行預設 SDPA inference，載入 `atlas.ckpt` 並產生 PDB | 完成；產生 `1a62_A.pdb` |
 | C27 | M7 | 檢查並回報 ATLAS NPY 實際包含 250 或 251 frames | 完成；9 個檔案均為 251 frames |
 | C28 | M8／train 入口 | 執行 `train.py`，確認能載入 `atlas.ckpt` 且預設使用 SDPA | 完成；checkpoint 載入並完成 1 validation batch |
-| C29 | M8／TPS 入口 | 執行 `tps_inference.py`，確認能載入 `atlas.ckpt` 且預設使用 SDPA | 完成；checkpoint 載入成功 |
-| C30 | M8／design 入口 | 執行 `design_inference.py`，確認能載入 `atlas.ckpt` 且預設使用 SDPA | 完成；checkpoint 載入成功 |
-| C31 | M8／upsampling 入口 | 執行 `upsampling_inference.py`，確認能載入 `atlas.ckpt` 且預設使用 SDPA | 完成；checkpoint 載入成功 |
+| C29 | M8／TPS 入口 | 以空 split 執行 `tps_inference.py`，確認預設參數接線與 `atlas.ckpt` 載入 | 完成；checkpoint 載入成功，未執行 attention forward |
+| C30 | M8／design 入口 | 以空 split 執行 `design_inference.py`，確認預設參數接線與 `atlas.ckpt` 載入 | 完成；checkpoint 載入成功，未執行 attention forward |
+| C31 | M8／upsampling 入口 | 以空 split 執行 `upsampling_inference.py`，確認預設參數接線與 `atlas.ckpt` 載入 | 完成；checkpoint 載入成功，未執行 attention forward |
 | C32 | M11；涵蓋 M1、M3 | 執行新版 `test_sdpa.py` 的上游基準、full-row padding、no-RoPE padding 與 position IDs 案例 | 完成；全部案例 PASS |
 | C33 | §3-1／cu126 | 對 `(64000,4,4)`、`(128000,4,4)` 執行 `torch.linalg.eigh` 並記錄 peak memory | 完成；64k PASS，128k cuSOLVER failure |
 | C34 | §3-1／cu130 | 在 cu130 對相同兩種 shape 執行 `eigh` | 完成；64k PASS，128k OOM |
@@ -170,7 +170,7 @@ A/B 指令規則同步更新：SDPA 組不帶 attention flag；manual 組明確�
 | C36 | §3-3／原始 C2 設定 | 執行 cu126、B=1、SDPA、GC off，記錄 CUDA memory history 與 snapshot | 完成；1 step PASS，snapshot 已產生 |
 | C37 | E2／對應 r1 C12 | 在 cu130 執行 Manual A4 L-scaling | 完成；L=256 PASS，L=1000 OOM |
 | C38 | E2／對應 r1 C13 | 在 cu130 執行 SDPA A4 L-scaling | 完成；最大成功 L=2500，L=5000 OOM |
-| C39 | M8／r2 training 預設 routing | 不帶 attention flag 執行 `train-runtime.py`，記錄實際 SDPA backend | 待執行 |
+| C39 | M8／r2 training 預設 routing | 不帶 attention flag 執行 `train-runtime.py`，記錄實際 SDPA backend | 完成；15 個 attention modules 均走 SDPA，backend 為 `EFFICIENT_ATTENTION` |
 
 E1 回覆：cu126 與 cu130 的 T4 是在兩套獨立 conda 環境中分別執行 `test_sdpa.py` 產生，並非複製同一份輸出。兩次測試使用相同固定 seed 與 FP32 輸入；兩套環境產生相同 `.npy` md5，是各自執行後得到的結果。E3 不另編執行編號：依 r1 C9–C11 與本節 C33–C35，4090 上目前 max feasible training batch size 為 1；B=2 對應的 128,000 個 4×4 `eigh` 在 cu126 發生 cuSOLVER failure、在 cu130 嘗試配置 32.74 GiB 而 OOM，因此限制來自 `eigh`，不是 attention 記憶體。
 
@@ -671,6 +671,10 @@ PY
 
 執行結果：完成。cu126、B=1、SDPA、GC off 成功完成 1 step，peak allocated 20.2485 GiB、peak reserved 21.1484 GiB；已產生 `C36_section3-C2-memory-snapshot.pickle` 與對應 JSON。
 
+Snapshot 重建得到的 live allocation peak 約為 20.216 GiB，與 JSON 記錄的 20.2485 GiB peak 相符。依 allocation 的 Python frame 分組，peak 當下約 7.174 GiB 來自 `mdgen/model/layers.py`（其中 GELU activation 約 6.255 GiB）、6.925 GiB 來自 `mdgen/model/mha.py`、1.755 GiB 來自 `mdgen/model/latent_model.py`、1.391 GiB 來自 layer normalization／functional；另約 2.8 GiB 沒有可歸屬的相關 Python frame。觸發 peak 的 allocation 位於 `mdgen/model/layers.py:84` 的 GELU，因此 C2（GC off）的最高點出現在 model forward activation，而不是 `torch.linalg.eigh`。
+
+C5 與 C6 都開啟 gradient checkpointing，量得的 peak 均為 8.586 GiB。Gradient checkpointing 壓低了 manual／SDPA 兩條路徑在 model forward 中保留的 activation，因而使兩者共同的前處理／座標轉換 workspace 成為最高點。C33 的獨立 `(64000,4,4)` `torch.linalg.eigh` repro 在 cu126 的 peak 為 7.988 GiB，與 C5／C6 的整體 peak 接近；據此判斷兩者峰值幾乎相同，是因 peak 已由共同的 `eigh` 階段主導，而不是由 attention backend 主導。
+
 ### C37 — E2／cu130 Manual A4
 
 ```bash
@@ -739,4 +743,6 @@ python train-runtime.py \
   2>&1 | tee my_new/r2/C39_M8-train-default-sdpa-backend.log
 ```
 
-通過條件：backend TXT 顯示 `requested_attention_path: sdpa`，已執行的 attention modules 記錄為 `sdpa` 而非 `manual`、`torch_mha` 或 `not_executed`，並觀察到實際 PyTorch SDPA operator／backend。執行結果：待執行。
+通過條件：backend TXT 顯示 `requested_attention_path: sdpa`，已執行的 attention modules 記錄為 `sdpa` 而非 `manual`、`torch_mha` 或 `not_executed`，並觀察到實際 PyTorch SDPA operator／backend。
+
+執行結果：完成。環境為 `torch 2.12.1+cu126`、CUDA 12.6、NVIDIA GeForce RTX 4090。報告記錄 `requested_attention_path: sdpa`；MDGen 的 15 個 attention modules 均為 `path=sdpa`，沒有 `manual`、`torch_mha` 或 `not_executed`；PyTorch profiler 觀察到 `aten::scaled_dot_product_attention` 與 `aten::_scaled_dot_product_efficient_attention`，`selected_backends: EFFICIENT_ATTENTION`。因此已確認 `train-runtime.py` 不帶 attention flag 時，training forward 實際走 SDPA。
