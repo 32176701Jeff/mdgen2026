@@ -17,9 +17,11 @@ conda env create \
   --file my_new/environment-mdgen2026-cu130-pyemma.yml \
   2>&1 | tee my_new/r2/C19_M12-cu130-conda-create.log
 ```
-預期產物：
+保存產物：
 (a) `my_new/r2/C19_M12-cu126-conda-create.log`
 (b) `my_new/r2/C19_M12-cu130-conda-create.log`
+
+執行結果：兩份 C19 conda 建立 log 已保存並納入 commit `8cb3fa2`。
 
 ## R3 — 大型產物移出 Git 追蹤
 處置：將 `*.npy`、`*.npz`、`*.pdb`、`*.pickle` 加入 `.gitignore`，並以 `git rm --cached` 取消既有大型產物的 Git 追蹤。此操作只修改 Git index，不刪除工作目錄中的實體檔案；JSON、log、txt、code 與 CSV 均繼續保留於 repository。
@@ -29,7 +31,7 @@ conda env create \
 (c) `.pdb`：2 個
 (d) `.pickle`：1 個
 原始檔保存位置：81 個實體檔目前均保留於執行工作的原始工作目錄；正式外部保存位置待補。
-執行狀態：Git index 整理與實體檔保留檢查已完成；Git 已不再追蹤上述四種大型產物，工作目錄仍保有 52 個 NPY、26 個 NPZ、2 個 PDB 與 1 個 pickle。待補正式外部保存位置及 R3 獨立 commit。
+執行狀態：Git index 整理與實體檔保留檢查已完成；Git 已不再追蹤上述四種大型產物，工作目錄仍保有 52 個 NPY、26 個 NPZ、2 個 PDB 與 1 個 pickle。R3 已由獨立 commit `0c87584` 完成；僅剩正式外部保存位置待補。
 ### C40 — R3 repository 大型產物整理
 
 ```bash
@@ -63,6 +65,8 @@ python test_sdpa.py \
   --output_dir my_new/r2.1/C41_R4-position-ids \
   2>&1 | tee my_new/r2.1/C41_R4-position-ids.log
 ```
+
+執行結果：完成；summary 為 `passed=true`，RoPE／no-RoPE、manual／SDPA 四條路徑收到非 `None` 的 `position_ids` 時均成功拋出 `NotImplementedError`。
 
 ## R5 — 底層類別的 use_sdpa 預設改為 True
 
@@ -130,6 +134,20 @@ print("passed=true")
 PY
 ```
 
+執行結果：完成；四個底層建構檢查均為 `use_sdpa=True`，最後輸出 `passed=true`。
+
+## R6 — 環境鎖定檔整理
+
+處置：兩份包含 PyEMMA 的環境檔使用不會與 r1 環境衝突的名稱；兩份不含 PyEMMA 的舊環境檔於檔頭標記為「r1 歷史環境，勿用」。正式環境為 `my_new/environment-mdgen2026-cu126-pyemma.yml`；cu130 版本保留供 eigh／Blackwell 追蹤。
+
+| file_path | block_name | 說明改動 |
+|---|---|---|
+| `my_new/environment-mdgen2026-cu126-pyemma.yml` | `runtime-environment`（r2 已存在；r2.1 修改並保留） | `name:` 設為 `mdgen2026-r2-a6-cu126`，避免未傳入 `conda env create --name` 時覆蓋 r1 環境；此檔為正式環境鎖定檔。 |
+| `my_new/environment-mdgen2026-cu130-pyemma.yml` | `runtime-environment`（r2 已存在；r2.1 修改並保留） | `name:` 設為 `mdgen2026-r2-a6-cu130`，與 r1 cu130 環境區隔。 |
+| `my_new/environment-mdgen2026-cu126.yml`、`my_new/environment-mdgen2026-cu130.yml` | —（r1 歷史環境） | 檔頭新增「MDGen-2026 r1 歷史環境，勿用」註解，保留既有內容供歷史結果重現。 |
+
+執行結果：完成；環境檔整理主要由 commit `9a3e6e0` 完成，最終環境名稱配合 C19 實際建立名稱調整於 commit `d554581`。
+
 ## E1 — Trainer 的 weights_only=False 時序
 
 C28 log 的執行時間早於 `weights_only=False` 進入 commit 的時間，僅由既有 log 無法重建當時未提交的 `train.py` 工作樹內容；因此不再以舊 C28 作為這兩行已實跑的證據，改由 r2.1 code 的 C43、C44 分別驗證 validate 與 fit resume 路徑。
@@ -163,6 +181,8 @@ python train.py \
   --model_dir workdir \
   2>&1 | tee my_new/r2.1/C43_E1-validation-checkpoint.log
 ```
+
+執行結果：完成；成功由 `ckpt/atlas.ckpt` 載入模型權重並完成一個 validation batch，`val_loss=1.131419062614441`。
 
 ### C44 — E1 r2.1 one-step checkpoint resume
 
@@ -218,6 +238,8 @@ python train.py \
   2>&1 | tee my_new/r2.1/C44_E1-one-step-resume.log
 ```
 
+執行結果：完成；來源 checkpoint 於 epoch 0、`trainer_step=1` 產生。resume 時顯示 `Restored all states`，並完成 epoch 1，使 `trainer_step` 由 1 前進至 2。
+
 ## E2 — 量測輸出記錄執行設定
 
 處置：在 runtime 與 L-scaling 的 JSON 輸出加入實際 matmul precision、deterministic algorithms 狀態，以及各 MHA 最後使用的 attention backend 與 SDPA fallback reason。此次只修改輸出欄位，不重跑 r2 的重量案例。
@@ -267,3 +289,18 @@ print("attention_modules=", len(report["results"][0]["attention_modules"]))
 print("passed=true")
 PY
 ```
+
+執行結果：完成；L=16 forward 成功，JSON 記錄 `float32_matmul_precision=highest`、`deterministic_algorithms_enabled=false`，15 個 attention modules 的 `last_attention_backend` 均為 `sdpa`，且每個 module 均包含 `last_sdpa_fallback_reason` 欄位。
+
+## r2 → r2.1 處置總表
+
+| # | 處置 | commit | 說明 |
+|---|---|---|---|
+| R1 | 待完成 | 待補 | 建立 `CHANGES_vs_base.md`，整合相對上游 `81482a4` 的 r1、r2、r2.1 改動。 |
+| R2 | 完成 | `8cb3fa2` | C19 的 cu126／cu130 conda 建立 log 已納入 repository。 |
+| R3 | 程式與 Git 整理完成；保存位置待補 | `0c87584` | 四類大型產物已加入 `.gitignore` 並由 Git index 移除；實體檔未刪除。正式外部保存位置仍須補入本報告。 |
+| R4 | 完成 | `e0944f0`；驗證產物 `8cb3fa2` | 非 `None` 的 `position_ids` 統一在 MHA 入口拒絕；C41 通過。 |
+| R5 | 完成 | `70e5884` | 底層 attention／layer 預設改為 SDPA；C42 通過。 |
+| R6 | 完成 | `9a3e6e0`、`d554581` | PyEMMA 環境名稱與 r1 區隔，舊 YAML 已標記為歷史環境，cu126 PyEMMA YAML 為正式檔。 |
+| E1 | 完成 | `d554581` | C43 validation checkpoint load 與 C44 one-step fit resume 均成功，三份 log 已保存。 |
+| E2 | 完成 | `c5334f1` | 兩個量測入口的 JSON 已加入 runtime 設定與各 MHA backend；C45 通過。 |
