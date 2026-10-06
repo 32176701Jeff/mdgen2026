@@ -296,7 +296,7 @@ PY
 
 | # | 處置 | commit | 說明 |
 |---|---|---|---|
-| R1 | 待完成 | 待補 | 建立 `CHANGES_vs_base.md`，整合相對上游 `81482a4` 的 r1、r2、r2.1 改動。 |
+| R1 | 完成 | `deee9ff` | 已建立 `CHANGES_vs_base.md`，整合相對上游 `81482a4` 的 r1、r2、r2.1 改動。 |
 | R2 | 完成 | `8cb3fa2` | C19 的 cu126／cu130 conda 建立 log 已納入 repository。 |
 | R3 | 完成 | `0c87584` | 四類大型產物已加入 `.gitignore` 並由 Git index 移除；實體檔未刪除，保存位置已記錄於本報告。 |
 | R4 | 完成 | `e0944f0`；驗證產物 `8cb3fa2` | 非 `None` 的 `position_ids` 統一在 MHA 入口拒絕；C41 通過。 |
