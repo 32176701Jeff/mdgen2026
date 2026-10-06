@@ -25,12 +25,6 @@ class RotaryEmbeddingWithPositionIds(RotaryEmbedding):
     """
 
     def forward(self, q, k, position_ids=None):
-        # position-id-rope-interface:start
-        if position_ids is not None:
-            raise NotImplementedError(
-                "Explicit position_ids are not supported in MDGen-2026 r2."
-            )
-        # position-id-rope-interface:end
         return super().forward(q, k)
 
 
@@ -255,6 +249,13 @@ class MultiheadAttention(nn.Module):
                 weights for each head. Implies *need_weights*. Default:
                 return the average attention weights over all heads.
         """
+        # position-id-rope-interface:start
+        if position_ids is not None:
+            raise NotImplementedError(
+                "Explicit position_ids are not supported in MDGen-2026 r2.1."
+            )
+        # position-id-rope-interface:end
+
         if need_head_weights:
             need_weights = True
 

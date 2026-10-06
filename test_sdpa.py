@@ -57,13 +57,13 @@ class SDPAEquivalenceTest:
         return manual, sdpa
 
     # sdpa-equivalence-test
-    def _build_current_modules(self):
+    def _build_current_modules(self, use_rotary_embeddings=True):
         common_args = {
             "embed_dim": self.embed_dim,
             "num_heads": self.num_heads,
             "dropout": 0.0,
             "add_bias_kv": True,
-            "use_rotary_embeddings": True,
+            "use_rotary_embeddings": use_rotary_embeddings,
         }
         manual = MultiheadAttention(**common_args, use_sdpa=False)
         sdpa = MultiheadAttention(**common_args, use_sdpa=True)
@@ -128,24 +128,35 @@ class SDPAEquivalenceTest:
             dtype=torch.long,
             device=self.device,
         ).expand(batch_size, -1)
-        modules = dict(zip(("manual", "sdpa"), self._build_current_modules()))  # sdpa-equivalence-test
         rejected = {}
-        for name, module in modules.items():
-            try:
-                module(
-                    query=model_input,
-                    key=model_input,
-                    value=model_input,
-                    need_weights=False,
-                    position_ids=position_ids,
+        for rope_name, use_rotary_embeddings in (("rope", True), ("no_rope", False)):
+            modules = dict(
+                zip(
+                    ("manual", "sdpa"),
+                    self._build_current_modules(
+                        use_rotary_embeddings=use_rotary_embeddings
+                    ),
                 )
-            except NotImplementedError:
-                rejected[name] = True
-            else:
-                rejected[name] = False
+            )
+            for backend_name, module in modules.items():
+                result_name = f"{rope_name}_{backend_name}"
+                try:
+                    module(
+                        query=model_input,
+                        key=model_input,
+                        value=model_input,
+                        need_weights=False,
+                        position_ids=position_ids,
+                    )
+                except NotImplementedError:
+                    rejected[result_name] = True
+                else:
+                    rejected[result_name] = False
         return {
-            "manual_raises": rejected["manual"],
-            "sdpa_raises": rejected["sdpa"],
+            "manual_raises": rejected["rope_manual"],
+            "sdpa_raises": rejected["rope_sdpa"],
+            "no_rope_manual_raises": rejected["no_rope_manual"],
+            "no_rope_sdpa_raises": rejected["no_rope_sdpa"],
             "passed": all(rejected.values()),
         }
 
