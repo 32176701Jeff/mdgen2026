@@ -54,7 +54,7 @@ class MDGenDataset(torch.utils.data.Dataset):
         end = frame_start + self.args.num_frames
         # data-preprocess-fixes:end
         # arr = np.copy(arr[frame_start:end]) * 10 # convert to angstroms
-        arr = np.copy(arr[frame_start:end]).astype(np.float32) # / 10.0 # convert to nm  # fp32-data-pipeline
+        arr = np.copy(arr[frame_start:end]).astype(np.float32) # / 10.0 # convert to nm
         if self.args.copy_frames:
             arr[1:] = arr[0]
 
