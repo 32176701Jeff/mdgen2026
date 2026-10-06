@@ -30,8 +30,8 @@ conda env create \
 (b) `.npz`：26 個
 (c) `.pdb`：2 個
 (d) `.pickle`：1 個
-原始檔保存位置：81 個實體檔目前均保留於執行工作的原始工作目錄；正式外部保存位置待補。
-執行狀態：Git index 整理與實體檔保留檢查已完成；Git 已不再追蹤上述四種大型產物，工作目錄仍保有 52 個 NPY、26 個 NPZ、2 個 PDB 與 1 個 pickle。R3 已由獨立 commit `0c87584` 完成；僅剩正式外部保存位置待補。
+原始檔保存位置：81 個實體檔保留於執行主機的原始實驗工作目錄 `/mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/`；這些檔案由 `.gitignore` 排除，只保留於工作目錄，不納入 repository 追蹤。
+執行狀態：Git index 整理與實體檔保留檢查已完成；Git 已不再追蹤上述四種大型產物，原始實驗工作目錄仍保有 52 個 NPY、26 個 NPZ、2 個 PDB 與 1 個 pickle。R3 的 repository 整理由獨立 commit `0c87584` 完成，原始產物的保存位置亦已記錄於本報告。
 ### C40 — R3 repository 大型產物整理
 
 ```bash
@@ -298,7 +298,7 @@ PY
 |---|---|---|---|
 | R1 | 待完成 | 待補 | 建立 `CHANGES_vs_base.md`，整合相對上游 `81482a4` 的 r1、r2、r2.1 改動。 |
 | R2 | 完成 | `8cb3fa2` | C19 的 cu126／cu130 conda 建立 log 已納入 repository。 |
-| R3 | 程式與 Git 整理完成；保存位置待補 | `0c87584` | 四類大型產物已加入 `.gitignore` 並由 Git index 移除；實體檔未刪除。正式外部保存位置仍須補入本報告。 |
+| R3 | 完成 | `0c87584` | 四類大型產物已加入 `.gitignore` 並由 Git index 移除；實體檔未刪除，保存位置已記錄於本報告。 |
 | R4 | 完成 | `e0944f0`；驗證產物 `8cb3fa2` | 非 `None` 的 `position_ids` 統一在 MHA 入口拒絕；C41 通過。 |
 | R5 | 完成 | `70e5884` | 底層 attention／layer 預設改為 SDPA；C42 通過。 |
 | R6 | 完成 | `9a3e6e0`、`d554581` | PyEMMA 環境名稱與 r1 區隔，舊 YAML 已標記為歷史環境，cu126 PyEMMA YAML 為正式檔。 |
