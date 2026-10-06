@@ -1,4 +1,4 @@
-name: mdgen2026-r2-cu130
+name: mdgen2026-r2-a6-cu130
 channels:
   - defaults
   - conda-forge

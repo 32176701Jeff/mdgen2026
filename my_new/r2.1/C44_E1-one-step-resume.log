@@ -1,0 +1,37 @@
+Seed set to 137
+Trainer already configured with model summary callbacks: [<class 'pytorch_lightning.callbacks.model_summary.ModelSummary'>]. Skipping setting a default `ModelSummary` callback.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+`Trainer(limit_train_batches=1)` was configured so 1 batch per epoch will be used.
+/home/jeff/.conda/envs/mdgen2026-r2-a6-cu126/lib/python3.10/site-packages/pytorch_lightning/callbacks/model_checkpoint.py:881: Checkpoint directory /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/workdir/C44-E1-r21-resume exists and is not empty.
+Restoring states from the checkpoint path at workdir/C44-E1-r21-source/epoch=0-step=1.ckpt
+2026-10-06 16:19:59,121 [SWCLAB-CLUSTER2-LINUX:32023] [INFO] Loading EMA state dict
+/home/jeff/.conda/envs/mdgen2026-r2-a6-cu126/lib/python3.10/site-packages/pytorch_lightning/trainer/call.py:283: Be aware that when using `ckpt_path`, callbacks used to create the checkpoint need to be provided during `Trainer` instantiation. Please add the following callbacks: ["ModelCheckpoint{'monitor': None, 'mode': 'min', 'every_n_train_steps': 0, 'every_n_epochs': 1, 'train_time_interval': None}"].
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name                | Type             | Params | Mode  | FLOPs
+-------------------------------------------------------------------------
+0 | model               | LatentMDGenModel | 34.2 M | train | 0    
+1 | model.latent_to_emb | Linear           | 8.4 K  | train | 0    
+2 | model.cond_to_emb   | Linear           | 8.4 K  | train | 0    
+3 | model.mask_to_emb   | Embedding        | 768    | train | 0    
+4 | model.aatype_to_emb | Embedding        | 8.1 K  | train | 0    
+5 | model.ipa_layers    | ModuleList       | 15.1 M | train | 0    
+6 | model.layers        | ModuleList       | 18.5 M | train | 0    
+7 | model.emb_to_latent | FinalLayer       | 303 K  | train | 0    
+8 | model.t_embedder    | TimestepEmbedder | 246 K  | train | 0    
+-------------------------------------------------------------------------
+34.2 M    Trainable params
+0         Non-trainable params
+34.2 M    Total params
+136.610   Total estimated model params size (MB)
+248       Modules in train mode
+0         Modules in eval mode
+0         Total Flops
+Restored all states from the checkpoint at workdir/C44-E1-r21-source/epoch=0-step=1.ckpt
+/home/jeff/.conda/envs/mdgen2026-r2-a6-cu126/lib/python3.10/site-packages/pytorch_lightning/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+/home/jeff/.conda/envs/mdgen2026-r2-a6-cu126/lib/python3.10/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:434: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=31` in the `DataLoader` to improve performance.
+Training: |          | 0/? [00:00<?, ?it/s]Training: |          | 0/? [00:00<?, ?it/s]Epoch 1:   0%|          | 0/1 [00:00<?, ?it/s]Epoch 1: 100%|██████████| 1/1 [00:00<00:00,  1.70it/s]Epoch 1: 100%|██████████| 1/1 [00:00<00:00,  1.70it/s]Epoch 1: 100%|██████████| 1/1 [00:00<00:00,  1.70it/s]2026-10-06 16:19:59,784 [SWCLAB-CLUSTER2-LINUX:32023] [INFO] {'train_model_dur': 0.19428539276123047, 'train_loss': 2.2823972702026367, 'train_time': 0.6847999095916748, 'train_dur': 0.8523399829864502, 'train_general_step_dur': 0.2351992130279541, 'epoch': 1, 'trainer_step': 2, 'iter_step': 1, 'train_count': 1, 'lr': 0.0001}
+`Trainer.fit` stopped: `max_epochs=2` reached.
+Epoch 1: 100%|██████████| 1/1 [00:00<00:00,  1.70it/s]

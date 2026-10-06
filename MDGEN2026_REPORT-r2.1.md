@@ -129,3 +129,91 @@ for name, uses_sdpa in checks.items():
 print("passed=true")
 PY
 ```
+
+## E1 — Trainer 的 weights_only=False 時序
+
+C28 log 的執行時間早於 `weights_only=False` 進入 commit 的時間，僅由既有 log 無法重建當時未提交的 `train.py` 工作樹內容；因此不再以舊 C28 作為這兩行已實跑的證據，改由 r2.1 code 的 C43、C44 分別驗證 validate 與 fit resume 路徑。
+
+| 編號 | 執行內容 | 驗證目的 |
+|---|---|---|
+| C43 | `train.py --validate --ckpt ckpt/atlas.ckpt`，限制一個 validation batch | 驗證 `Trainer.validate(..., weights_only=False)` 能載入舊 Lightning checkpoint。 |
+| C44 | 先以 `train.py` 產生包含 optimizer state 的完整 Lightning checkpoint，再以 `train.py --ckpt` resume 並限制一個 training batch | 驗證 `Trainer.fit(..., weights_only=False)` 能恢復完整訓練狀態並完成一個 resumed training step。`atlas.ckpt` 僅含模型權重，不適用於 fit resume。 |
+
+### C43 — E1 r2.1 validation checkpoint load
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+mkdir -p my_new/r2.1
+
+python train.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --validate \
+  --val_batches 1 \
+  --ckpt ckpt/atlas.ckpt \
+  --run_name C43-E1-r21-validation \
+  --model_dir workdir \
+  2>&1 | tee my_new/r2.1/C43_E1-validation-checkpoint.log
+```
+
+### C44 — E1 r2.1 one-step checkpoint resume
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+mkdir -p my_new/r2.1
+
+python train.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --no-deterministic \
+  --epochs 1 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 1 \
+  --run_name C44-E1-r21-source \
+  --model_dir workdir \
+  2>&1 | tee my_new/r2.1/C44_E1-source-checkpoint.log
+
+SOURCE_CKPT=$(find workdir/C44-E1-r21-source -maxdepth 1 -type f -name '*.ckpt' \
+  | sort | tail -n 1)
+test -n "${SOURCE_CKPT}"
+
+python train.py \
+  --sim_condition \
+  --train_split data/proteins-mdgen2026.csv \
+  --val_split data/proteins-mdgen2026.csv \
+  --data_dir data/npy \
+  --atlas \
+  --prepend_ipa \
+  --num_frames 250 \
+  --crop 256 \
+  --batch_size 1 \
+  --num_workers 0 \
+  --train_seed 137 \
+  --no-deterministic \
+  --epochs 2 \
+  --train_batches 1 \
+  --no_validate \
+  --ckpt_freq 999 \
+  --ckpt "${SOURCE_CKPT}" \
+  --run_name C44-E1-r21-resume \
+  --model_dir workdir \
+  2>&1 | tee my_new/r2.1/C44_E1-one-step-resume.log
+```
