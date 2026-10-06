@@ -7,5 +7,9 @@ __pycache__/
 workdir/
 wandb/
 *.ckpt
+*.npy
+*.npz
+*.pdb
+*.pickle
 data
 ckpt
