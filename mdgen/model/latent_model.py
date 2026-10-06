@@ -367,7 +367,7 @@ class IPALayer(nn.Module):
     """Transformer layer block."""
 
     def __init__(self, embed_dim, ffn_embed_dim, mha_heads, dropout=0.0,
-                 use_rotary_embeddings=False, use_sdpa=False, ipa_args=None):  # sdpa-route
+                 use_rotary_embeddings=False, use_sdpa=True, ipa_args=None):  # sdpa-route
         super().__init__()
         self.embed_dim = embed_dim
         self.ffn_embed_dim = ffn_embed_dim
@@ -432,7 +432,7 @@ class LatentMDGenLayer(nn.Module):
 
     def __init__(self, embed_dim, ffn_embed_dim, mha_heads, dropout=0.0, num_frames=50, hyena=False,
                  use_rotary_embeddings=False, use_time_attention=True,
-                 use_sdpa=False, ipa_args=None):  # sdpa-route
+                 use_sdpa=True, ipa_args=None):  # sdpa-route
         super().__init__()
         self.embed_dim = embed_dim
         self.num_frames = num_frames

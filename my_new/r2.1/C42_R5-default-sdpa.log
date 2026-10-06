@@ -1,0 +1,5 @@
+MultiheadAttention: use_sdpa=True
+AttentionWithRoPE: use_sdpa=True
+IPALayer: use_sdpa=True
+LatentMDGenLayer: use_sdpa=True
+passed=true

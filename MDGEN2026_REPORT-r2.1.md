@@ -63,3 +63,69 @@ python test_sdpa.py \
   --output_dir my_new/r2.1/C41_R4-position-ids \
   2>&1 | tee my_new/r2.1/C41_R4-position-ids.log
 ```
+
+## R5 — 底層類別的 use_sdpa 預設改為 True
+
+處置：將底層 attention 與 layer 類別的 `use_sdpa` 建構預設改為 `True`，使直接建構底層類別時也符合「未指定 attention 路徑即使用 SDPA」。`AttentionWithRoPE` 經由 `*args, **kwargs` 建構 `MultiheadAttention`，因此沿用 MHA 的新預設；上層 `NewMDGenWrapper` 與 `LatentMDGenModel` 在 r2 已預設使用 SDPA。
+
+| file_path | block_name | 說明改動 |
+|---|---|---|
+| `mdgen/model/mha.py` | `sdpa-route`（r1 已存在；r2.1 修改並保留） | 將 `MultiheadAttention.__init__` 的 `use_sdpa` 預設由 `False` 改為 `True`；`AttentionWithRoPE` 未明確傳值時會經 kwargs 使用此預設。 |
+| `mdgen/model/latent_model.py` | `sdpa-route`（r1 已存在；r2.1 修改並保留） | 將 `IPALayer.__init__` 與 `LatentMDGenLayer.__init__` 的 `use_sdpa` 預設由 `False` 改為 `True`。 |
+| `test_sdpa.py` | `sdpa-equivalence-test`（r1 已存在；本輪確認、不修改） | manual 組均已明確傳入 `use_sdpa=False`，SDPA 組均明確傳入 `use_sdpa=True`，不依賴底層預設值。 |
+
+### C42 — R5 bottom-layer default SDPA CPU smoke test
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+mkdir -p my_new/r2.1
+
+python - <<'PY' 2>&1 | tee my_new/r2.1/C42_R5-default-sdpa.log
+from mdgen.model.latent_model import AttentionWithRoPE, IPALayer, LatentMDGenLayer
+from mdgen.model.mha import MultiheadAttention
+
+embed_dim = 32
+num_heads = 4
+ipa_args = {
+    "c_s": embed_dim,
+    "c_z": 0,
+    "c_hidden": 4,
+    "no_heads": num_heads,
+    "no_qk_points": 2,
+    "no_v_points": 2,
+    "dropout": 0.0,
+}
+
+mha = MultiheadAttention(embed_dim, num_heads)
+attention_with_rope = AttentionWithRoPE(embed_dim, num_heads)
+ipa_layer = IPALayer(
+    embed_dim=embed_dim,
+    ffn_embed_dim=4 * embed_dim,
+    mha_heads=num_heads,
+    ipa_args=ipa_args,
+)
+latent_layer = LatentMDGenLayer(
+    embed_dim=embed_dim,
+    ffn_embed_dim=4 * embed_dim,
+    mha_heads=num_heads,
+    num_frames=2,
+)
+
+checks = {
+    "MultiheadAttention": mha.use_sdpa,
+    "AttentionWithRoPE": attention_with_rope.attn.use_sdpa,
+    "IPALayer": ipa_layer.use_sdpa and ipa_layer.mha_l.attn.use_sdpa,
+    "LatentMDGenLayer": (
+        latent_layer.use_sdpa
+        and latent_layer.mha_t.attn.use_sdpa
+        and latent_layer.mha_l.attn.use_sdpa
+    ),
+}
+
+for name, uses_sdpa in checks.items():
+    print(f"{name}: use_sdpa={uses_sdpa}")
+    assert uses_sdpa is True
+
+print("passed=true")
+PY
+```

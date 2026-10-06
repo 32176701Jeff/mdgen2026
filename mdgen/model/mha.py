@@ -97,7 +97,7 @@ class MultiheadAttention(nn.Module):
         self_attention: bool = False,
         encoder_decoder_attention: bool = False,
         use_rotary_embeddings: bool = False,
-        use_sdpa: bool = False,  # sdpa-route
+        use_sdpa: bool = True,  # sdpa-route
     ):
         super().__init__()
         self.embed_dim = embed_dim

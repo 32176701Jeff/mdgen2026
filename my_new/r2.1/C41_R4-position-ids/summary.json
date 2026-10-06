@@ -338,6 +338,8 @@
   "position_ids": null,
   "position_ids_non_none": {
     "manual_raises": true,
+    "no_rope_manual_raises": true,
+    "no_rope_sdpa_raises": true,
     "passed": true,
     "sdpa_raises": true
   },
