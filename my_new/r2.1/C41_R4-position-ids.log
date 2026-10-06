@@ -1,0 +1,7 @@
+residue_no_padding: output=4.012e-07, gradient=4.039e-07, path=sdpa, pass=True
+residue_padding: output=3.431e-07, gradient=3.798e-07, path=sdpa, pass=True
+time_no_padding: output=3.849e-07, gradient=3.892e-07, path=sdpa, pass=True
+time_padding: output=3.377e-07, gradient=4.684e-07, path=sdpa, pass=True
+time_full_row_padding: output=2.997e-07, gradient=3.696e-07, path=sdpa, pass=True
+no_rope_padding: output=3.307e-07, gradient=7.635e-06, manual_padding=0.000e+00, sdpa_padding=0.000e+00, pass=True
+summary: my_new/r2.1/C41_R4-position-ids/summary.json
