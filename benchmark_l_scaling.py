@@ -78,8 +78,8 @@ def attention_paths(model):
     for name, module in model.named_modules():
         if hasattr(module, "last_attention_backend"):
             paths[name] = {
-                "path": module.last_attention_backend,
-                "fallback_reason": module.last_sdpa_fallback_reason,
+                "last_attention_backend": module.last_attention_backend,
+                "last_sdpa_fallback_reason": module.last_sdpa_fallback_reason,
             }
     return paths
 
@@ -368,6 +368,10 @@ def main():
         "num_frames": args.num_frames,
         "grad_checkpointing": False,
         "deterministic": args.deterministic,  # deterministic-execution
+        "float32_matmul_precision": torch.get_float32_matmul_precision(),
+        "deterministic_algorithms_enabled": (
+            torch.are_deterministic_algorithms_enabled()
+        ),
         "cudnn_benchmark": False,
         "seed": args.seed,
         "torch_version": torch.__version__,

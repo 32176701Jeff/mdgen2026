@@ -38,6 +38,19 @@ def get_sdpa_backend(operator_name):
 
 
 # sdpa-diagnostics
+def get_attention_module_settings(model):
+    settings = {}
+    for name, module in model.named_modules():
+        if not hasattr(module, 'last_attention_backend'):
+            continue
+        settings[name] = {
+            'last_attention_backend': module.last_attention_backend,
+            'last_sdpa_fallback_reason': module.last_sdpa_fallback_reason,
+        }
+    return settings
+
+
+# sdpa-diagnostics
 class SDPABackendReportCallback(pl.Callback):
     def __init__(self, output_path, use_sdpa):
         super().__init__()
@@ -165,6 +178,13 @@ def write_peak_memory_report(
         'torch_version': torch.__version__,
         'cuda_version': torch.version.cuda,
         'precision': args.precision,
+        'float32_matmul_precision': torch.get_float32_matmul_precision(),
+        'deterministic_algorithms_enabled': (
+            torch.are_deterministic_algorithms_enabled()
+        ),
+        'attention_modules': get_attention_module_settings(
+            trainer.lightning_module
+        ),
         'batch_size': args.batch_size,
         'num_frames': args.num_frames,
         'crop': args.crop,
@@ -224,6 +244,11 @@ class ExecutionTimeCallback(pl.Callback):
             'torch_version': torch.__version__,
             'cuda_version': torch.version.cuda,
             'precision': self.args.precision,
+            'float32_matmul_precision': torch.get_float32_matmul_precision(),
+            'deterministic_algorithms_enabled': (
+                torch.are_deterministic_algorithms_enabled()
+            ),
+            'attention_modules': get_attention_module_settings(pl_module),
             'batch_size': self.args.batch_size,
             'num_frames': self.args.num_frames,
             'crop': self.args.crop,

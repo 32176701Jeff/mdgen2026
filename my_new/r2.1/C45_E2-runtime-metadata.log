@@ -1,0 +1,4 @@
+2026-10-06 16:51:38,081 [SWCLAB-CLUSTER2-LINUX:35615] [INFO] Loading EMA state dict
+A4: attention=sdpa B=1 T=250 L=16
+A4: L=16 success, peak_allocated=0.250 GiB
+A4 report saved to: /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/my_new/r2.1/C45_E2-runtime-metadata.json

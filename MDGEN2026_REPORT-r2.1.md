@@ -217,3 +217,53 @@ python train.py \
   --model_dir workdir \
   2>&1 | tee my_new/r2.1/C44_E1-one-step-resume.log
 ```
+
+## E2 — 量測輸出記錄執行設定
+
+處置：在 runtime 與 L-scaling 的 JSON 輸出加入實際 matmul precision、deterministic algorithms 狀態，以及各 MHA 最後使用的 attention backend 與 SDPA fallback reason。此次只修改輸出欄位，不重跑 r2 的重量案例。
+
+| file_path | block_name | 說明改動 |
+|---|---|---|
+| `train-runtime.py` | `sdpa-diagnostics`（r1 已存在；r2.1 修改並保留） | 新增共用的 MHA metadata 收集函式，逐一記錄 `last_attention_backend` 與 `last_sdpa_fallback_reason`。 |
+| `train-runtime.py` | `peak_memory`（r1 已存在；r2.1 修改並保留） | peak-memory JSON 新增 `float32_matmul_precision`、`deterministic_algorithms_enabled` 與 `attention_modules`。 |
+| `train-runtime.py` | `execution_time`（r1 已存在；r2.1 修改並保留） | execution-time JSON 新增相同的三項 runtime 設定。 |
+| `benchmark_l_scaling.py` | `a4-l-scaling`（r1 已存在；r2.1 修改並保留） | L-scaling JSON 新增 matmul precision 與 deterministic algorithms 實際狀態；各 attention module 的欄位名稱明確改為 `last_attention_backend` 與 `last_sdpa_fallback_reason`。 |
+
+### C45 — E2 runtime metadata smoke test
+
+```bash
+conda activate mdgen2026-r2-a6-cu126
+mkdir -p my_new/r2.1
+
+python benchmark_l_scaling.py \
+  --sim_ckpt ckpt/atlas.ckpt \
+  --lengths 16 \
+  --num_frames 250 \
+  --seed 137 \
+  --output my_new/r2.1/C45_E2-runtime-metadata.json \
+  2>&1 | tee my_new/r2.1/C45_E2-runtime-metadata.log
+
+python - <<'PY'
+import json
+
+path = "my_new/r2.1/C45_E2-runtime-metadata.json"
+with open(path, encoding="utf-8") as handle:
+    report = json.load(handle)
+
+assert "float32_matmul_precision" in report
+assert "deterministic_algorithms_enabled" in report
+assert report["results"]
+assert report["results"][0]["attention_modules"]
+for metadata in report["results"][0]["attention_modules"].values():
+    assert "last_attention_backend" in metadata
+    assert "last_sdpa_fallback_reason" in metadata
+
+print("float32_matmul_precision=", report["float32_matmul_precision"])
+print(
+    "deterministic_algorithms_enabled=",
+    report["deterministic_algorithms_enabled"],
+)
+print("attention_modules=", len(report["results"][0]["attention_modules"]))
+print("passed=true")
+PY
+```
