@@ -307,7 +307,7 @@ PY
 
 ## r2.1 → r2.2
 
-r2.2 完成 `CHANGES_vs_base.md` 的文件補正，並修正一處 backend report 使用新舊 metadata key 不一致的問題；另移除一個已撤銷 block 遺留的註解錨點。除 backend report 的欄位讀取外，沒有修改程式行為。
+r2.2 完成 `CHANGES_vs_base.md` 的文件補正，並修正一處 backend report 使用新舊 metadata key 不一致的問題。除 backend report 的欄位讀取外，沒有修改程式行為。
 
 ### C46 — backend report metadata key smoke test
 
@@ -327,25 +327,24 @@ python benchmark_l_scaling.py \
   2>&1 | tee my_new/r2.2/C46_backend-report.log
 ```
 
-預期產物：
+保存產物：
 (a) `my_new/r2.2/C46_backend-report.log`
 (b) `my_new/r2.2/C46_backend-report.json`
 (c) `my_new/r2.2/C46_backend-report.txt`
 
-執行結果：待於具備 CUDA、正式環境與 `ckpt/atlas.ckpt` 的執行主機完成。
+執行結果：完成；在 NVIDIA GeForce RTX 4090、PyTorch 2.12.1+cu126 上完成 L=16 forward，peak allocated memory 為 0.250 GiB。backend report 與 L-scaling JSON 均成功保存，15 個 attention modules 的 `path` 均為 `sdpa`，過程未再出現舊 metadata key 所造成的 `KeyError`。
 
-| # | 處置 | 說明 |
-|---|---|---|
-| M-1 | 完成 | 在 B6 與依檔案索引補列 `sim_inference.get_batch` 的 residue／token 數與 CSV `seqres` 長度檢查，以及不一致時的 `ValueError`。 |
-| S-1 | 完成 | 在 B1 加入 RoPE 開／關 × Manual／SDPA 的 2×2 實際路徑表，並說明靜默 fallback、`last_sdpa_fallback_reason` 與 `_sdpa_fallback_reason` 的全部條件。 |
-| S-2 | 完成 | 說明 `AttentionWithRoPE` 固定傳入 `need_weights=False`，以及 Manual memory 與上游不完全相同的 A/B 比較注意事項。 |
-| S-3 | 完成 | Validation B5 改以 C43、C44 分別作為 validation checkpoint load 與 fit resume 的證據，不再引用 C28。 |
-| S-4 | 完成 | Validation B4 註明 C37／C38 尚未包含 `float32_matmul_precision`，並另列 C45 的完整 runtime metadata。 |
-| S-5 | 完成 | 採用「清單註明無錨點」方案，標示兩處 `runtime-compatibility`、`model-output-dir` 與 `repository-artifacts`，未修改 code。 |
-| S-6 | 完成 | 將 time-window 行為明確拆成 frame 數小於、等於及大於 `num_frames` 三種情況，包含 `ValueError`、唯一合法起點與全部合法起點抽樣。 |
-| S-7 | 完成 | 註明 `sdpa-time-axis-mask` 的呼叫處只有標記註解，實際 mask 轉換位於 `AttentionWithRoPE` 與 MHA SDPA 分支。 |
-| S-8 | 完成 | 將 `download_atlas.sh` 明確描述為只下載 `1a62_A`、`1bkp_A` 的測試範例腳本，不宣稱提供完整 ATLAS 清單。 |
-| S-9 | 完成 | 補列 `RotaryEmbeddingWithPositionIds`、gradient checkpointing 的 `position_ids` 傳遞、shape 檢查、L-scaling JSON 欄位改名、純格式總括，並將 CSV 檔頭描述統一為 r2。 |
-| S-10 | 完成 | 文末新增依「檔案 → 函式／區塊 → `block_name`／Bx」整理的反向索引，並附各區塊的改動說明。 |
-| 額外修正 | 已修改；C46 待執行 | `benchmark_l_scaling.py` 的 backend report 改讀 `last_attention_backend` 與 `last_sdpa_fallback_reason`，與 L-scaling JSON metadata schema 一致。 |
-| 額外清理 | 完成 | 移除 `mdgen/dataset.py` 中殘留的 `fp32-data-pipeline` 註解錨點；該 `.astype(np.float32)` 行為原本即來自上游，移除註解不改變 runtime 行為。 |
+| # | 處置 | commit | 說明 |
+|---|---|---|---|
+| M-1 | 完成 | `514454d` | 在 B6 與依檔案索引補列 `sim_inference.get_batch` 的 residue／token 數與 CSV `seqres` 長度檢查，以及不一致時的 `ValueError`。 |
+| S-1 | 完成 | `514454d` | 在 B1 加入 RoPE 開／關 × Manual／SDPA 的 2×2 實際路徑表，並說明靜默 fallback、`last_sdpa_fallback_reason` 與 `_sdpa_fallback_reason` 的全部條件。 |
+| S-2 | 完成 | `514454d` | 說明 `AttentionWithRoPE` 固定傳入 `need_weights=False`，以及 Manual memory 與上游不完全相同的 A/B 比較注意事項。 |
+| S-3 | 完成 | `514454d` | Validation B5 改以 C43、C44 分別作為 validation checkpoint load 與 fit resume 的證據，不再引用 C28。 |
+| S-4 | 完成 | `514454d` | Validation B4 註明 C37／C38 尚未包含 `float32_matmul_precision`，並另列 C45 的完整 runtime metadata。 |
+| S-5 | 完成 | `514454d` | 採用「清單註明無錨點」方案，標示兩處 `runtime-compatibility`、`model-output-dir` 與 `repository-artifacts`，未修改 code。 |
+| S-6 | 完成 | `514454d` | 將 time-window 行為明確拆成 frame 數小於、等於及大於 `num_frames` 三種情況，包含 `ValueError`、唯一合法起點與全部合法起點抽樣。 |
+| S-7 | 完成 | `514454d` | 註明 `sdpa-time-axis-mask` 的呼叫處只有標記註解，實際 mask 轉換位於 `AttentionWithRoPE` 與 MHA SDPA 分支。 |
+| S-8 | 完成 | `514454d` | 將 `download_atlas.sh` 明確描述為只下載 `1a62_A`、`1bkp_A` 的測試範例腳本，不宣稱提供完整 ATLAS 清單。 |
+| S-9 | 完成 | `514454d` | 補列 `RotaryEmbeddingWithPositionIds`、gradient checkpointing 的 `position_ids` 傳遞、shape 檢查、L-scaling JSON 欄位改名、純格式總括，並將 CSV 檔頭描述統一為 r2。 |
+| S-10 | 完成 | `514454d` | 文末新增依「檔案 → 函式／區塊 → `block_name`／Bx」整理的反向索引，並附各區塊的改動說明。 |
+| 額外修正 | 完成；C46 通過 | `514454d` | `benchmark_l_scaling.py` 的 backend report 改讀 `last_attention_backend` 與 `last_sdpa_fallback_reason`，與 L-scaling JSON metadata schema 一致。 |
