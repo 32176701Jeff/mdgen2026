@@ -1,0 +1,9 @@
+2026-10-07 22:17:18,054 [SWCLAB-CLUSTER2-LINUX:72000] [INFO] Loading EMA state dict
+/home/jeff/.conda/envs/mdgen2026-r2-a6-cu126/lib/python3.10/site-packages/torch/profiler/profiler.py:272: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+USDT:2026-10-07 22:17:18 72000:72000 ActivityProfilerController.cpp:415] profiler_start
+USDT:2026-10-07 22:17:18 72000:72000 ActivityProfilerController.cpp:455] profiler_stop
+SDPA backend report saved to: /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/my_new/r2.2/C46_backend-report.txt
+A4: attention=sdpa B=1 T=250 L=16
+A4: L=16 success, peak_allocated=0.250 GiB
+A4 report saved to: /mnt/hdd/jeff/mdgen-piezo/model/mdgen2026/my_new/r2.2/C46_backend-report.json
